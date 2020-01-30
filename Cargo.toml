@@ -7,4 +7,5 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-tantivy = "0.11.3"
+# tantivy = "0.11.3"
+tantivy = { git = "https://github.com/anti-social/tantivy", rev = "eba30d47" }

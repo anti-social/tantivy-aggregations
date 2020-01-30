@@ -1,13 +1,9 @@
+pub mod agg;
+pub mod filter;
 pub mod metric;
+pub mod searcher;
 pub mod terms;
+pub mod tuple;
 
 #[cfg(test)]
 pub(crate) mod fixtures;
-
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn it_works() {
-        assert_eq!(2 + 2, 4);
-    }
-}

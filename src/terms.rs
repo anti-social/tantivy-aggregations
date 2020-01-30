@@ -1,101 +1,102 @@
 use std::collections::HashMap;
-use std::marker::PhantomData;
 
-use tantivy::{SegmentLocalId, SegmentReader, DocId, Score, Result};
-use tantivy::schema::Field;
-use tantivy::collector::{Collector, SegmentCollector};
+use tantivy::{DocId, Result, Score, Searcher};
 use tantivy::fastfield::FastFieldReader;
+use tantivy::schema::Field;
 
+use crate::agg::{Agg, AggSegmentContext, PreparedAgg, SegmentAgg};
 
-#[derive(Default)]
-pub struct TermCounts<T: Default> {
-    facet_counts: HashMap<u64, TermBucket<T>>,
-}
-
-#[derive(Default)]
-pub struct TermBucket<T: Default> {
-    count: u64,
-    sub: Option<T>,
-}
-
-trait Bucket {
-    fn update(&mut self, other: &Self);
-}
-
-impl<T: Default> Bucket for TermBucket<T> {
-    fn update(&mut self, other: &Self) {
-        self.count += other.count;
-    }
-}
-
-/// Terms aggregation for u64 fast field
-pub struct TermsAgg<T: Default, SubAgg> {
+pub struct TermsAgg<SubAgg>
+where
+    SubAgg: Agg,
+{
     field: Field,
-    sub_agg: Option<SubAgg>,
-    _marker: PhantomData<T>,
+    sub_agg: SubAgg,
 }
 
-impl<T: Default, SubAgg> TermsAgg<T, SubAgg> {
-    /// Creates a new terms aggregation for aggregating a given field.
-    pub fn for_field(field: Field) -> TermsAgg<(), ()> {
-        TermsAgg {
-            field,
-            sub_agg: None,
-            _marker: PhantomData
-        }
+pub fn terms_agg<SubAgg>(field: Field, sub_agg: SubAgg) -> TermsAgg<SubAgg>
+where
+    SubAgg: Agg,
+{
+    TermsAgg {
+        field,
+        sub_agg,
     }
 }
 
-impl<T: Default + Send + Sync + 'static, SubAgg: /*Collector +*/ Sync> Collector for TermsAgg<T, SubAgg> {
-    type Fruit = TermCounts<T>;
+impl<SubAgg> Agg for TermsAgg<SubAgg>
+where
+    SubAgg: Agg,
+    <SubAgg as Agg>::Child: PreparedAgg,
+{
+    type Fruit = HashMap<u64, SubAgg::Fruit>;
+    type Child = PreparedTermsAgg<SubAgg::Child>;
 
-    type Child = TermsSegmentCollector<T>;
-
-    fn for_segment(&self, _: SegmentLocalId, reader: &SegmentReader) -> Result<Self::Child> {
-        let ff_reader = reader.fast_fields().u64(self.field)
-            .expect("Expect u64 field");
-
+    fn prepare(&self, searcher: &Searcher) -> Result<Self::Child> {
         Ok(Self::Child {
-            counters: HashMap::new(),
-            ff_reader,
+            field: self.field,
+            sub_agg: self.sub_agg.prepare(searcher)?,
         })
     }
 
     fn requires_scoring(&self) -> bool {
         false
     }
+}
 
-    fn merge_fruits(&self, fruits: Vec<Self::Fruit>) -> Result<Self::Fruit> {
-        let mut total_counters = HashMap::new();
-        for counters in fruits {
-            for (key, bucket) in counters.facet_counts {
-                total_counters.entry(key).or_insert(TermBucket::default()).update(&bucket);
-            }
-        }
-        Ok(Self::Fruit {
-            facet_counts: total_counters,
+pub struct PreparedTermsAgg<SubAgg>
+where
+    SubAgg: PreparedAgg,
+{
+    field: Field,
+    sub_agg: SubAgg,
+}
+
+impl<SubAgg> PreparedAgg for PreparedTermsAgg<SubAgg>
+where
+    SubAgg: PreparedAgg,
+{
+    type Fruit = HashMap<u64, SubAgg::Fruit>;
+    type Child = TermsSegmentAgg<SubAgg::Child>;
+
+    fn for_segment(&self, ctx: &AggSegmentContext) -> Result<Self::Child> {
+        let ff_reader = ctx.reader.fast_fields().u64(self.field)
+            .expect("Expect u64 field");
+        Ok(Self::Child {
+            ff_reader,
+            sub_agg: self.sub_agg.for_segment(ctx)?,
         })
     }
-}
 
-pub struct TermsSegmentCollector<T: Default> {
-    counters: HashMap<u64, TermBucket<T>>,
-    ff_reader: FastFieldReader<u64>,
-}
+    fn merge(&self, harvest: &mut Self::Fruit, fruit: &Self::Fruit) {
+        for (key, bucket) in fruit {
+            let existing_bucket = harvest.entry(*key)
+                .or_insert(SubAgg::Fruit::default());
 
-impl<T: Default + Send + Sync + 'static> SegmentCollector for TermsSegmentCollector<T> {
-    type Fruit = TermCounts<T>;
-
-    fn collect(&mut self, doc: DocId, _: Score) {
-        let key = self.ff_reader.get(doc);
-        let bucket = self.counters.entry(key).or_insert(TermBucket::default());
-        bucket.count += 1;
-    }
-
-    fn harvest(self) -> Self::Fruit {
-        Self::Fruit {
-            facet_counts: self.counters
+            self.sub_agg.merge(existing_bucket, bucket);
         }
+    }
+}
+
+pub struct TermsSegmentAgg<SubAgg>
+where
+    SubAgg: SegmentAgg,
+{
+    ff_reader: FastFieldReader<u64>,
+    sub_agg: SubAgg,
+}
+
+impl<SubAgg> SegmentAgg for TermsSegmentAgg<SubAgg>
+where
+    SubAgg: SegmentAgg,
+{
+    type Fruit = HashMap<u64, SubAgg::Fruit>;
+
+    fn collect(&mut self, doc: DocId, score: Score, agg_value: &mut Self::Fruit) {
+        let key = self.ff_reader.get(doc);
+        let bucket = agg_value.entry(key)
+            .or_insert(<SubAgg as SegmentAgg>::Fruit::default());
+        self.sub_agg.collect(doc, score, bucket);
     }
 }
 
@@ -106,10 +107,12 @@ mod tests {
     use tantivy::query::AllQuery;
 
     use crate::fixtures::{ProductSchema, index_test_products};
-    use super::{TermsAgg, TermBucket, TermCounts};
+    use crate::metric::{count_agg, min_agg};
+    use crate::searcher::AggSearcher;
+    use super::terms_agg;
 
     #[test]
-    fn terms_agg() -> Result<()> {
+    fn test_terms_agg() -> Result<()> {
         let dir = RAMDirectory::create();
         let schema = ProductSchema::create();
         let index = Index::create(dir, schema.schema.clone())?;
@@ -117,17 +120,24 @@ mod tests {
         index_test_products(&mut index_writer, &schema)?;
 
         let index_reader = index.reader()?;
-        let searcher = index_reader.searcher();
-        let cat_agg = TermsAgg::<TermBucket<()>, ()>::for_field(schema.category_id);
-        let cat_counts: TermCounts<()> = searcher.search(&AllQuery,  &cat_agg)?;
-        assert_eq!(
-            cat_counts.facet_counts.get(&1u64).map(|b| b.count),
-            Some(2u64)
+        let searcher = AggSearcher::from_reader(index_reader);
+
+        let cat_agg = terms_agg(
+            schema.category_id,
+            (count_agg(), min_agg(schema.price))
         );
+        let cat_counts = searcher.search(&AllQuery,  &cat_agg)?;
+        let cat1_bucket = cat_counts.get(&1u64);
         assert_eq!(
-            cat_counts.facet_counts.get(&2u64).map(|b| b.count),
-            Some(3u64)
+            cat1_bucket,
+            Some(&(2u64, Some(9.99_f64)))
         );
+        let cat2_bucket = cat_counts.get(&2u64);
+        assert_eq!(
+            cat2_bucket,
+            Some(&(3u64, Some(0.5_f64)))
+        );
+
 
         Ok(())
     }

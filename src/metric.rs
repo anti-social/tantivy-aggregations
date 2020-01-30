@@ -1,76 +1,122 @@
-use tantivy::{SegmentLocalId, SegmentReader, DocId, Score, Result};
-use tantivy::schema::Field;
-use tantivy::collector::{Collector, SegmentCollector};
+use tantivy::{Result, DocId, Score, Searcher};
 use tantivy::fastfield::FastFieldReader;
+use tantivy::schema::Field;
 
-/// Min aggregation for f64 fast field
-pub struct MinAgg {
-    field: Field,
+use crate::agg::{Agg, PreparedAgg, SegmentAgg, AggSegmentContext};
+
+pub struct CountAgg;
+
+pub fn count_agg() -> CountAgg {
+    CountAgg {}
 }
 
-impl MinAgg {
-    /// Creates a new terms aggregation for aggregating a given field.
-    pub fn for_field(field: Field) -> MinAgg {
-        MinAgg {
-            field,
-        }
-    }
-}
+impl Agg for CountAgg {
+    type Fruit = u64;
+    type Child = PreparedCountAgg;
 
-impl Collector for MinAgg {
-    type Fruit = Option<f64>;
-
-    type Child = MinSegmentCollector;
-
-    fn for_segment(&self, _: SegmentLocalId, reader: &SegmentReader) -> Result<Self::Child> {
-        let ff_reader = reader.fast_fields().f64(self.field)
-            .expect("Expect u64 field");
-
-        Ok(Self::Child {
-            min_value: None,
-            ff_reader,
-        })
+    fn prepare(&self, _: &Searcher) -> Result<Self::Child> {
+        Ok(Self::Child {})
     }
 
     fn requires_scoring(&self) -> bool {
         false
     }
 
-    fn merge_fruits(&self, fruits: Vec<Self::Fruit>) -> Result<Self::Fruit> {
-        let mut min_value = Self::Fruit::default();
-        for v in fruits {
-            match v {
-                None => continue,
-                Some(v) => {
-                    let cur_min_value = min_value.get_or_insert(v);
-                    if v < *cur_min_value {
-                        *cur_min_value = v;
-                    }
+}
+
+pub struct PreparedCountAgg;
+
+impl PreparedAgg for PreparedCountAgg {
+    type Fruit = u64;
+    type Child = CountSegmentAgg;
+
+    fn for_segment(&self, _: &AggSegmentContext) -> Result<Self::Child> {
+        Ok(Self::Child {})
+    }
+
+    fn merge(&self, acc: &mut Self::Fruit, other: &Self::Fruit) {
+        *acc += *other
+    }
+}
+
+pub struct CountSegmentAgg;
+
+impl SegmentAgg for CountSegmentAgg {
+    type Fruit = u64;
+
+    fn collect(&mut self, _: DocId, _: Score, agg_value: &mut Self::Fruit) {
+        *agg_value += 1;
+    }
+}
+
+pub struct MinAgg {
+    field: Field,
+}
+
+pub fn min_agg(field: Field) -> MinAgg {
+    MinAgg {
+        field,
+    }
+}
+
+impl Agg for MinAgg {
+    type Fruit = Option<f64>;
+    type Child = PreparedMinAgg;
+
+    fn prepare(&self, _: &Searcher) -> Result<Self::Child> {
+        Ok(PreparedMinAgg {
+            field: self.field,
+        })
+    }
+
+    fn requires_scoring(&self) -> bool {
+        false
+    }
+}
+
+pub struct PreparedMinAgg {
+    field: Field,
+}
+
+impl PreparedAgg for PreparedMinAgg {
+    type Fruit = Option<f64>;
+    type Child = MinSegmentAgg;
+
+    fn for_segment(&self, ctx: &AggSegmentContext) -> Result<Self::Child> {
+        let ff_reader = ctx.reader.fast_fields().f64(self.field)
+            .expect("Expect f64 field");
+        Ok(Self::Child {
+            ff_reader,
+        })
+    }
+
+    fn merge(&self, acc: &mut Self::Fruit, fruit: &Self::Fruit) {
+        match fruit {
+            None => return,
+            Some(v) => {
+                // TODO: optimize case when acc.is_none() - do not need condition
+                let cur_min_value = acc.get_or_insert(*v);
+                if *v < *cur_min_value {
+                    *cur_min_value = *v;
                 }
             }
         }
-        Ok(min_value)
     }
 }
 
-pub struct MinSegmentCollector {
-    min_value: Option<f64>,
+pub struct MinSegmentAgg {
     ff_reader: FastFieldReader<f64>,
 }
 
-impl SegmentCollector for MinSegmentCollector {
+impl SegmentAgg for MinSegmentAgg {
     type Fruit = Option<f64>;
 
-    fn collect(&mut self, doc: DocId, _: Score) {
+    fn collect(&mut self, doc: DocId, _: Score, agg_value: &mut Self::Fruit) {
         let v = self.ff_reader.get(doc);
-        let min_value = self.min_value.get_or_insert(v);
+        let min_value = agg_value.get_or_insert(v);
         if v < *min_value {
             *min_value = v;
         }
-    }
-
-    fn harvest(self) -> Self::Fruit {
-        self.min_value
     }
 }
 
@@ -80,11 +126,12 @@ mod tests {
     use tantivy::directory::RAMDirectory;
     use tantivy::query::AllQuery;
 
+    use super::{count_agg, min_agg};
+    use crate::searcher::AggSearcher;
     use crate::fixtures::{ProductSchema, index_test_products};
-    use super::MinAgg;
 
     #[test]
-    fn min_agg() -> Result<()> {
+    fn test_count() -> Result<()> {
         let dir = RAMDirectory::create();
         let schema = ProductSchema::create();
         let index = Index::create(dir, schema.schema.clone())?;
@@ -92,12 +139,31 @@ mod tests {
         index_test_products(&mut index_writer, &schema)?;
 
         let index_reader = index.reader()?;
-        let searcher = index_reader.searcher();
-        let min_price = searcher.search(&AllQuery, &MinAgg::for_field(schema.price))?;
-        assert_eq!(
-            min_price,
-            Some(0.5_f64)
-        );
+        let searcher = AggSearcher::from_reader(index_reader);
+
+        let agg = count_agg();
+        let count = searcher.search(&AllQuery, &agg)?;
+
+        assert_eq!(count, 5);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_min() -> Result<()> {
+        let dir = RAMDirectory::create();
+        let schema = ProductSchema::create();
+        let index = Index::create(dir, schema.schema.clone())?;
+        let mut index_writer = index.writer(3_000_000)?;
+        index_test_products(&mut index_writer, &schema)?;
+
+        let index_reader = index.reader()?;
+        let searcher = AggSearcher::from_reader(index_reader);
+
+        let agg = min_agg(schema.price);
+        let min_price = searcher.search(&AllQuery, &agg)?;
+
+        assert_eq!(min_price, Some(0.5_f64));
 
         Ok(())
     }
