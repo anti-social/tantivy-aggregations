@@ -26,7 +26,8 @@ fn collect_segment<A: PreparedAgg>(
     weight: &dyn Weight,
     segment_ord: u32,
     segment_reader: &SegmentReader,
-) -> Result<A::Fruit> {
+    harvest: &mut A::Fruit,
+) -> Result<()> {
     let mut scorer = weight.scorer(segment_reader)?;
     let agg_ctx = AggSegmentContext {
         segment_ord,
@@ -34,18 +35,16 @@ fn collect_segment<A: PreparedAgg>(
         scorer: scorer.as_ref(),
     };
     let mut segment_agg = agg.for_segment(&agg_ctx)?;
-//    if let Some(delete_bitset) = segment_reader.delete_bitset() {
-//        scorer.for_each(&mut |doc, score| {
-//            if delete_bitset.is_alive(doc) {
-//                segment_collector.collect(doc, score);
-//            }
-//        });
-//    } else {
-//        scorer.for_each(&mut |doc, score| segment_collector.collect(doc, score));
-//    }
-    let mut harvest = <<A as PreparedAgg>::Child as SegmentAgg>::Fruit::default();
-    scorer.for_each(&mut |doc, score| segment_agg.collect(doc, score, &mut harvest));
-    Ok(harvest)
+    if let Some(delete_bitset) = segment_reader.delete_bitset() {
+        scorer.for_each(&mut |doc, score| {
+            if delete_bitset.is_alive(doc) {
+                segment_agg.collect(doc, score, harvest);
+            }
+        });
+    } else {
+        scorer.for_each(&mut |doc, score| segment_agg.collect(doc, score, harvest));
+    }
+    Ok(())
 }
 
 /// Holds a list of `SegmentReader`s ready for search.
@@ -151,21 +150,41 @@ impl AggSearcher {
         let weight = query.weight(self.inner.deref(), scoring_enabled)?;
         let prepared_agg = agg.prepare(self.inner.deref())?;
         let segment_readers = self.segment_readers();
-        let fruits = executor.map(
-            |(segment_ord, segment_reader)| {
-                collect_segment(
-                    &prepared_agg,
-                    weight.as_ref(),
-                    segment_ord as u32,
-                    segment_reader,
-                )
-            },
-            segment_readers.iter().enumerate(),
-        )?;
-        let mut harvest = A::Fruit::default();
-        for fruit in fruits.iter() {
-            prepared_agg.merge(&mut harvest, fruit);
-        }
+        let harvest = match executor {
+            Executor::SingleThread => {
+                let mut harvest = A::Fruit::default();
+                for (segment_ord, segment_reader) in segment_readers.iter().enumerate() {
+                    collect_segment(
+                        &prepared_agg,
+                        weight.as_ref(),
+                        segment_ord as u32,
+                        segment_reader,
+                        &mut harvest,
+                    )?;
+                }
+                harvest
+            }
+            executor @ Executor::ThreadPool(_) => {
+                let fruits = executor.map(
+                    |(segment_ord, segment_reader)| {
+                        let mut fruit = A::Fruit::default();
+                        collect_segment(
+                            &prepared_agg,
+                            weight.as_ref(),
+                            segment_ord as u32,
+                            segment_reader,
+                            &mut fruit,
+                        ).map(|_| fruit)
+                    },
+                    segment_readers.iter().enumerate(),
+                )?;
+                let mut harvest = A::Fruit::default();
+                for fruit in fruits.iter() {
+                    prepared_agg.merge(&mut harvest, fruit);
+                }
+                harvest
+            }
+        };
         Ok(harvest)
     }
 

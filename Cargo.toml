@@ -9,3 +9,8 @@ edition = "2018"
 [dependencies]
 # tantivy = "0.11.3"
 tantivy = { git = "https://github.com/anti-social/tantivy", rev = "eba30d47" }
+
+[dev-dependencies]
+rand = "0.7"
+rand_pcg = "0.2"
+test_fixtures = { path = "test_fixtures" }

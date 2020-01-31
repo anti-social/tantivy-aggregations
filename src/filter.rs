@@ -1,5 +1,5 @@
 use tantivy::{Result, DocId, Score, Searcher, SkipResult};
-use tantivy::query::{Query, Weight, Scorer};
+use tantivy::query::{Query, Scorer, Weight};
 
 use crate::agg::{Agg, AggSegmentContext, PreparedAgg, SegmentAgg};
 
@@ -88,7 +88,7 @@ where
     type Fruit = SubAgg::Fruit;
 
     fn collect(&mut self, doc: DocId, score: Score, agg_value: &mut Self::Fruit) {
-        if dbg!(self.exhausted) {
+        if self.exhausted {
             return;
         }
         if doc == self.scorer.doc() {
@@ -114,7 +114,8 @@ mod tests {
     use tantivy::query::{AllQuery, TermQuery, RangeQuery};
     use tantivy::schema::IndexRecordOption;
 
-    use crate::fixtures::{ProductSchema, index_test_products};
+    use test_fixtures::{ProductSchema, index_test_products};
+
     use crate::searcher::AggSearcher;
     use crate::metric::count_agg;
     use super::filter_agg;

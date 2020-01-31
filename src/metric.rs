@@ -126,9 +126,10 @@ mod tests {
     use tantivy::directory::RAMDirectory;
     use tantivy::query::AllQuery;
 
+    use test_fixtures::{ProductSchema, index_test_products};
+
     use super::{count_agg, min_agg};
     use crate::searcher::AggSearcher;
-    use crate::fixtures::{ProductSchema, index_test_products};
 
     #[test]
     fn test_count() -> Result<()> {
