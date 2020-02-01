@@ -30,28 +30,29 @@ fn bench_terms_agg(b: &mut Bencher) -> Result<()> {
     let index_reader = index.reader()?;
     let searcher = AggSearcher::from_reader(index_reader);
     dbg!(searcher.num_docs());
-//    dbg!(searcher.segment_readers().len());
+    dbg!(searcher.segment_readers().len());
 
-//    let aggs = terms_agg(
-//        schema.category_id,
-//        count_agg()
-//    );
-    let aggs = (
-        terms_agg(
-            schema.category_id,
-            count_agg()
-        ),
-        terms_agg(
-            schema.attr_facets,
-            count_agg()
-        )
+    let aggs = terms_agg(
+        schema.category_id,
+        count_agg()
     );
-//    dbg!(searcher.search(&AllQuery, &cat_agg));
+//    let aggs = (
+//        terms_agg(
+//            schema.category_id,
+//            count_agg()
+//        ),
+//        terms_agg(
+//            schema.attr_facets,
+//            count_agg()
+//        )
+//    );
+    let cat_counts = searcher.search(&AllQuery, &aggs)?;
+    println!("Top 10 categories: {:?}", cat_counts.top_k(10, |b| b));
 
     b.iter(|| {
         let cat_counts = searcher.search(&AllQuery,  &aggs)
             .expect("Search failed");
-        black_box(cat_counts);
+        black_box(cat_counts.top_k(10, |b| b));
     });
 
     Ok(())
