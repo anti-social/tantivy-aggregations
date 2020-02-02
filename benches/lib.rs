@@ -32,27 +32,28 @@ fn bench_terms_agg(b: &mut Bencher) -> Result<()> {
     dbg!(searcher.num_docs());
     dbg!(searcher.segment_readers().len());
 
-    let aggs = terms_agg(
-        schema.category_id,
-        count_agg()
-    );
-//    let aggs = (
-//        terms_agg(
-//            schema.category_id,
-//            count_agg()
-//        ),
-//        terms_agg(
-//            schema.attr_facets,
-//            count_agg()
-//        )
+//    let aggs = terms_agg(
+//        schema.category_id,
+//        count_agg()
 //    );
+    let aggs = (
+        terms_agg(
+            schema.category_id,
+            count_agg()
+        ),
+        terms_agg(
+            schema.attr_facets,
+            count_agg()
+        )
+    );
     let cat_counts = searcher.search(&AllQuery, &aggs)?;
-    println!("Top 10 categories: {:?}", cat_counts.top_k(10, |b| b));
+    println!("Top 10 categories: {:?}", cat_counts.0.top_k(10, |b| b));
+    println!("Top 10 attributes: {:?}", cat_counts.1.top_k(10, |b| b));
 
     b.iter(|| {
         let cat_counts = searcher.search(&AllQuery,  &aggs)
             .expect("Search failed");
-        black_box(cat_counts.top_k(10, |b| b));
+        black_box(cat_counts);
     });
 
     Ok(())
@@ -67,9 +68,11 @@ pub fn index_test_products(writer: &mut IndexWriter, schema: &ProductSchema) -> 
         doc.add_u64(schema.id, id);
         doc.add_u64(schema.category_id, rng.gen_range(1_u64, 1000));
         doc.add_f64(schema.price, rng.gen_range(1_f64, 2_f64));
-        let attr_id = rng.gen_range(1_u32, 20_u32);
-        let value_id = rng.gen_range(1_u32, 100_u32);
-        doc.add_u64(schema.attr_facets, ((attr_id as u64) << 32) | (value_id as u64));
+        for _ in 0_u8..rng.gen_range(0_u8, 20u8) {
+            let attr_id = rng.gen_range(1_u32, 20_u32);
+            let value_id = rng.gen_range(1_u32, 100_u32);
+            doc.add_u64(schema.attr_facets, ((attr_id as u64) << 32) | (value_id as u64));
+        }
         writer.add_document(doc);
     }
     for _i in 1..=num_deleted {

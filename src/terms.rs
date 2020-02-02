@@ -156,7 +156,7 @@ mod tests {
 
     use test_fixtures::{ProductSchema, index_test_products};
 
-    use crate::metric::{count_agg, min_agg};
+    use crate::metric::{count_agg, min_agg_f64};
     use crate::searcher::AggSearcher;
     use super::terms_agg;
 
@@ -173,7 +173,7 @@ mod tests {
 
         let cat_agg = terms_agg(
             schema.category_id,
-            (count_agg(), min_agg(schema.price))
+            (count_agg(), min_agg_f64(schema.price))
         );
         let cat_counts = searcher.search(&AllQuery,  &cat_agg)?;
         let cat1_bucket = cat_counts.get(&1u64);
