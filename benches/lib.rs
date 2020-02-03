@@ -12,7 +12,7 @@ use tantivy::query::AllQuery;
 extern crate tantivy_aggregations;
 use tantivy_aggregations::metric::count_agg;
 use tantivy_aggregations::searcher::AggSearcher;
-use tantivy_aggregations::terms::terms_agg;
+use tantivy_aggregations::terms::{terms_agg_u64, terms_agg_u64s};
 
 extern crate test;
 use test::{Bencher, black_box};
@@ -37,11 +37,11 @@ fn bench_terms_agg(b: &mut Bencher) -> Result<()> {
 //        count_agg()
 //    );
     let aggs = (
-        terms_agg(
+        terms_agg_u64(
             schema.category_id,
             count_agg()
         ),
-        terms_agg(
+        terms_agg_u64s(
             schema.attr_facets,
             count_agg()
         )

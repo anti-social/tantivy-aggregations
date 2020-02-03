@@ -44,10 +44,18 @@ impl ProductSchema {
         let mut schema = Schema::builder();
         let id = schema.add_u64_field("id", INDEXED | STORED);
         let category_id = schema.add_u64_field("category_id", INDEXED | FAST);
-        let tag_ids = schema.add_u64_field("tag_ids", IntOptions::default().set_fast(Cardinality::MultiValues));
+        let tag_ids = schema.add_u64_field(
+            "tag_ids",
+            IntOptions::default().set_fast(Cardinality::MultiValues)
+        );
         let price = schema.add_f64_field("price", INDEXED | FAST);
-        let positive_opinion_percent = schema.add_u64_field("positive_opinion_percent", INDEXED | FAST);
-        let attr_facets = schema.add_u64_field("attr_facets", INDEXED | FAST);
+        let positive_opinion_percent = schema.add_u64_field(
+            "positive_opinion_percent", INDEXED | FAST
+        );
+        let attr_facets = schema.add_u64_field(
+            "attr_facets",
+            IntOptions::default().set_indexed().set_fast(Cardinality::MultiValues)
+        );
         let date_created = schema.add_date_field("date_created", INDEXED | FAST);
         Self {
             schema: schema.build(),
