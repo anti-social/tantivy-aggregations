@@ -10,6 +10,7 @@ use tantivy::directory::RAMDirectory;
 use tantivy::query::AllQuery;
 
 extern crate tantivy_aggregations;
+use tantivy_aggregations::histogram::histogram_agg_f64;
 use tantivy_aggregations::metric::count_agg;
 use tantivy_aggregations::searcher::AggSearcher;
 use tantivy_aggregations::terms::{terms_agg_u64, terms_agg_u64s};
@@ -36,24 +37,34 @@ fn bench_terms_agg(b: &mut Bencher) -> Result<()> {
 //        schema.category_id,
 //        count_agg()
 //    );
-    let aggs = (
-        terms_agg_u64(
-            schema.category_id,
-            count_agg()
-        ),
-        terms_agg_u64s(
-            schema.attr_facets,
-            count_agg()
-        )
-    );
-    let cat_counts = searcher.search(&AllQuery, &aggs)?;
-    println!("Top 10 categories: {:?}", cat_counts.0.top_k(10, |b| b));
-    println!("Top 10 attributes: {:?}", cat_counts.1.top_k(10, |b| b));
+//    let aggs = (
+//        terms_agg_u64(
+//            schema.category_id,
+//            count_agg()
+//        ),
+//        terms_agg_u64s(
+//            schema.attr_facets,
+//            count_agg()
+//        )
+//    );
+//    let cat_counts = searcher.search(&AllQuery, &aggs)?;
+//    println!("Top 10 categories: {:?}", cat_counts.0.top_k(10, |b| b));
+//    println!("Top 10 attributes: {:?}", cat_counts.1.top_k(10, |b| b));
+//
+//    b.iter(|| {
+//        let cat_counts = searcher.search(&AllQuery,  &aggs)
+//            .expect("Search failed");
+//        black_box(cat_counts);
+//    });
+
+    let price_hist_agg = histogram_agg_f64(schema.price, 10_f64, count_agg());
+    let price_histogram = searcher.search(&AllQuery, &price_hist_agg)?;
+    println!("Price histogram: {:?}", price_histogram.buckets());
 
     b.iter(|| {
-        let cat_counts = searcher.search(&AllQuery,  &aggs)
+        let price_histogram = searcher.search(&AllQuery,  &price_hist_agg)
             .expect("Search failed");
-        black_box(cat_counts);
+        black_box(price_histogram);
     });
 
     Ok(())
@@ -67,7 +78,7 @@ pub fn index_test_products(writer: &mut IndexWriter, schema: &ProductSchema) -> 
         let mut doc = Document::new();
         doc.add_u64(schema.id, id);
         doc.add_u64(schema.category_id, rng.gen_range(1_u64, 1000));
-        doc.add_f64(schema.price, rng.gen_range(1_f64, 2_f64));
+        doc.add_f64(schema.price, rng.gen_range(1_f64, 101_f64));
         for _ in 0_u8..rng.gen_range(0_u8, 20u8) {
             let attr_id = rng.gen_range(1_u32, 20_u32);
             let value_id = rng.gen_range(1_u32, 100_u32);

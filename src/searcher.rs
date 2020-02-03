@@ -152,7 +152,7 @@ impl AggSearcher {
         let segment_readers = self.segment_readers();
         let harvest = match executor {
             Executor::SingleThread => {
-                let mut harvest = A::Fruit::default();
+                let mut harvest = prepared_agg.create_fruit();
                 for (segment_ord, segment_reader) in segment_readers.iter().enumerate() {
                     collect_segment(
                         &prepared_agg,
@@ -167,7 +167,7 @@ impl AggSearcher {
             executor @ Executor::ThreadPool(_) => {
                 let fruits = executor.map(
                     |(segment_ord, segment_reader)| {
-                        let mut fruit = A::Fruit::default();
+                        let mut fruit = prepared_agg.create_fruit();
                         collect_segment(
                             &prepared_agg,
                             weight.as_ref(),
@@ -178,7 +178,7 @@ impl AggSearcher {
                     },
                     segment_readers.iter().enumerate(),
                 )?;
-                let mut harvest = A::Fruit::default();
+                let mut harvest = prepared_agg.create_fruit();
                 for fruit in fruits.iter() {
                     prepared_agg.merge(&mut harvest, fruit);
                 }

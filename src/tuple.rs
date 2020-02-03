@@ -30,6 +30,10 @@ where
     type Fruit = (A1::Fruit, A2::Fruit);
     type Child = (A1::Child, A2::Child);
 
+    fn create_fruit(&self) -> Self::Fruit {
+        (self.0.create_fruit(), self.1.create_fruit())
+    }
+
     fn for_segment(&self, ctx: &AggSegmentContext) -> Result<Self::Child> {
         Ok((
             self.0.for_segment(ctx)?,
@@ -49,6 +53,10 @@ where
     A2: SegmentAgg,
 {
     type Fruit = (A1::Fruit, A2::Fruit);
+
+    fn create_fruit(&self) -> Self::Fruit {
+        (self.0.create_fruit(), self.1.create_fruit())
+    }
 
     fn collect(&mut self, doc: DocId, score: Score, output: &mut Self::Fruit) {
         self.0.collect(doc, score, &mut output.0);

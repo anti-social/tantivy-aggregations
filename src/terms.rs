@@ -81,7 +81,7 @@ where
     fn merge(&self, harvest: &mut Self::Fruit, fruit: &Self::Fruit) {
         for (key, bucket) in fruit.res.iter() {
             let existing_bucket = harvest.res.entry(*key)
-                .or_insert(SubAgg::Fruit::default());
+                .or_insert_with(|| self.sub_agg.create_fruit());
 
             self.sub_agg.merge(existing_bucket, bucket);
         }
@@ -119,7 +119,7 @@ where
     fn collect(&mut self, doc: DocId, score: Score, agg_value: &mut Self::Fruit) {
         let key = self.ff_reader.get(doc);
         let bucket = agg_value.res.entry(key)
-            .or_insert(<SubAgg as SegmentAgg>::Fruit::default());
+            .or_insert_with(|| self.sub_agg.create_fruit());
         self.sub_agg.collect(doc, score, bucket);
     }
 }
@@ -161,7 +161,7 @@ where
         self.ff_reader.get_vals(doc, &mut self.vals);
         for &key in self.vals.iter() {
             let bucket = agg_value.res.entry(key)
-                .or_insert(<SubAgg as SegmentAgg>::Fruit::default());
+                .or_insert_with(|| self.sub_agg.create_fruit());
             self.sub_agg.collect(doc, score, bucket);
         }
     }
