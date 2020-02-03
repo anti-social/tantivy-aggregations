@@ -22,6 +22,10 @@ pub trait PreparedAgg: Sync {
     type Fruit: Default + Debug + Send;
     type Child: SegmentAgg<Fruit = Self::Fruit>;
 
+    fn create_fruit(&self) -> Self::Fruit {
+        Self::Fruit::default()
+    }
+
     fn for_segment(&self, ctx: &AggSegmentContext) -> Result<Self::Child>;
 
     fn merge(&self, acc: &mut Self::Fruit, fruit: &Self::Fruit);

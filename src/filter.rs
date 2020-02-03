@@ -3,14 +3,6 @@ use tantivy::query::{Query, Scorer, Weight};
 
 use crate::agg::{Agg, AggSegmentContext, PreparedAgg, SegmentAgg};
 
-pub struct FilterAgg<'q, SubAgg>
-where
-    SubAgg: Agg,
-{
-    query: &'q dyn Query,
-    sub_agg: SubAgg,
-}
-
 pub fn filter_agg<'q, SubAgg>(query: &'q dyn Query, sub_agg: SubAgg) -> FilterAgg<SubAgg>
 where
     SubAgg: Agg,
@@ -19,6 +11,14 @@ where
         query,
         sub_agg,
     }
+}
+
+pub struct FilterAgg<'q, SubAgg>
+where
+    SubAgg: Agg,
+{
+    query: &'q dyn Query,
+    sub_agg: SubAgg,
 }
 
 impl<'q, SubAgg> Agg for FilterAgg<'q, SubAgg>
