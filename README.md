@@ -42,3 +42,4 @@ TODO:
 - [ ] date_histogram
 - [ ] top_hits
 - [ ] dynamic aggregations (boxed)
+- [ ] derive macros
