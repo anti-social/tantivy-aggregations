@@ -27,3 +27,18 @@ let top10_count = agg_result.1.top_k(10, |b| b.0);
 // Top 10 categories by minimum price
 let top10_min_price = agg_result.1.top_k(10, |b| b.1); 
 ```
+
+TODO:
+- [x] count
+- [x] min, max (u64, i64, f64, date, u64s, i64s, f64s, dates)
+- [ ] avg, sum
+- [ ] stat
+- [ ] cardinality
+- [ ] **percentiles**
+- [x] terms (u64, i64, u64s, i64s)
+- [x] filter
+- [ ] filters
+- [x] histogram (f64)
+- [ ] date_histogram
+- [ ] top_hits
+- [ ] dynamic aggregations (boxed)
