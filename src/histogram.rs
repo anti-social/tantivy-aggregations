@@ -1,9 +1,12 @@
+use std::collections::BTreeMap;
+
 use tantivy::{DocId, Result, Score, Searcher};
+use tantivy::fastfield::FastFieldReader;
 use tantivy::query::Scorer;
 use tantivy::schema::Field;
 
 use crate::agg::{Agg, AggSegmentContext, PreparedAgg, SegmentAgg};
-use tantivy::fastfield::FastFieldReader;
+use std::cmp::Ordering;
 
 type HistogramFruit<T> = HistogramAggRes<f64, T>;
 
@@ -97,6 +100,7 @@ where
         let ff_reader = ctx.reader.fast_fields().f64(self.field).unwrap();
         Ok(Self::Child::new(
             ff_reader,
+            self.interval,
             self.sub_agg.for_segment(ctx)?,
         ))
     }
@@ -112,6 +116,7 @@ where
     SubAgg: SegmentAgg,
 {
     ff_reader: FastFieldReader<f64>,
+    interval: f64,
     sub_agg: SubAgg,
 }
 
@@ -119,9 +124,9 @@ impl<SubAgg> HistogramSegmentAgg<SubAgg>
 where
     SubAgg: SegmentAgg,
 {
-    fn new(ff_reader: FastFieldReader<f64>, sub_agg: SubAgg) -> Self {
+    fn new(ff_reader: FastFieldReader<f64>, interval: f64, sub_agg: SubAgg) -> Self {
         Self {
-            ff_reader, sub_agg
+            ff_reader, interval, sub_agg
         }
     }
 }
@@ -133,33 +138,85 @@ where
     type Fruit = HistogramFruit<SubAgg::Fruit>;
 
     fn collect(&mut self, doc: DocId, score: Score, agg_value: &mut Self::Fruit) {
-        let key = self.ff_reader.get(doc);
-
-        if agg_value.buckets.is_empty() {
-            let val = <SubAgg as SegmentAgg>::Fruit::default();
-            agg_value.buckets.push((key, val));
+        let k = self.ff_reader.get(doc);
+        if k.is_nan() {
+            return;
         }
 
-        let mut start_ix = 0;
-        let mut end_ix = agg_value.buckets.len() - 1;
-        let mut mid_ix: usize;
-        loop {
-            mid_ix = (end_ix - start_ix + 1) / 2;
-            let start_key = agg_value.buckets.get
-            let key > start_key
-        }
-        agg_value.buckets = Vec::with_capacity(agg_value.buckets.len() + 1);
+        let search_res = agg_value.buckets.binary_search_by(|&(start, _)| {
+            if start > k {
+                Ordering::Greater
+            } else if k >= start && k < start + self.interval {
+                Ordering::Equal
+            } else {
+                Ordering::Less
+            }
+        });
+        let ix = match search_res {
+            Ok(found_ix) => {
+                found_ix
+            }
+            Err(insert_ix) => {
+                dbg!(k);
+                dbg!(self.interval);
+                agg_value.buckets.insert(
+                    insert_ix,
+                    (dbg!((k / self.interval).floor() * self.interval), <SubAgg as SegmentAgg>::Fruit::default())
+                );
+                insert_ix
+            }
+        };
+
+        self.sub_agg.collect(doc, score, &mut agg_value.buckets[ix].1);
     }
 }
 
 #[derive(Default, Debug)]
 pub struct HistogramAggRes<K, T>
 where
-    K: PartialOrd + PartialEq,
+    K: PartialOrd,
     T: Default,
 {
-    buckets: Vec<(K, T)>
+    pub buckets: Vec<(K, T)>
 }
+
+//#[derive(Default, Debug)]
+//pub struct TotalNum<T: PartialEq + PartialOrd>(T);
+//
+//impl From<f64> for TotalNum<f64> {
+//    fn from(n: f64) -> Self {
+//        if n.is_nan() {
+//            panic!("Not a number");
+//        }
+//        Self(n)
+//    }
+//}
+//
+//impl PartialEq for TotalNum<f64> {
+//    fn eq(&self, other: &Self) -> bool {
+//        self.0 == other.0
+//    }
+//}
+//
+//impl Eq for TotalNum<f64> {}
+//
+//impl Ord for TotalNum<f64> {
+//    fn cmp(&self, other: &Self) -> Ordering {
+//        if self.0 < other.0 {
+//            Ordering::Less
+//        } else if self.0 > other.0 {
+//            Ordering::Greater
+//        } else {
+//            Ordering::Equal
+//        }
+//    }
+//}
+//
+//impl PartialOrd for TotalNum<f64> {
+//    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+//        Some(self.cmp(other))
+//    }
+//}
 
 //impl<K, T> HistogramAggRes<K, T>
 //where
@@ -176,3 +233,43 @@ where
 //        unimplemented!()
 //    }
 //}
+
+#[cfg(test)]
+mod tests {
+    use std::cmp::Reverse;
+
+    use tantivy::{Index, Result};
+    use tantivy::directory::RAMDirectory;
+    use tantivy::query::AllQuery;
+
+    use test_fixtures::{ProductSchema, index_test_products};
+
+    use crate::searcher::AggSearcher;
+    use crate::metric::count_agg;
+    use super::histogram_agg_f64;
+
+    #[test]
+    fn test_histogram_agg() -> Result<()> {
+        let dir = RAMDirectory::create();
+        let schema = ProductSchema::create();
+        let index = Index::create(dir, schema.schema.clone())?;
+        let mut index_writer = index.writer(3_000_000)?;
+        index_test_products(&mut index_writer, &schema)?;
+
+        let index_reader = index.reader()?;
+        let searcher = AggSearcher::from_reader(index_reader);
+
+        let price_hist_agg = histogram_agg_f64(
+            schema.price, 10.0_f64, count_agg()
+        );
+        let price_hist = searcher.search(&AllQuery, &price_hist_agg)?;
+        println!("{:?}", price_hist.buckets);
+//        let cat1_bucket = cat_counts.get(&1u64);
+//        assert_eq!(
+//            cat1_bucket,
+//            Some(&(2u64, Some(9.99_f64)))
+//        );
+
+        Ok(())
+    }
+}
