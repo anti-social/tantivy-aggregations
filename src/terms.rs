@@ -203,7 +203,7 @@ where
         F: FnMut(&'a T) -> U,
         U: Copy + Ord,
     {
-        if k == 0 {
+        if self.res.is_empty() || k == 0 {
             return vec!();
         }
 
@@ -245,6 +245,23 @@ mod tests {
     use crate::metric::{count_agg, min_agg_f64};
     use crate::searcher::AggSearcher;
     use super::terms_agg_u64;
+
+    #[test]
+    fn test_empty_terms_agg() -> Result<()> {
+        let product_index = ProductIndex::create_in_ram(3)?;
+        let searcher = product_index.reader.searcher();
+
+        let cat_agg = terms_agg_u64(
+            product_index.schema.category_id, count_agg()
+        );
+        let cat_counts = searcher.agg_search(&AllQuery,  &cat_agg)?;
+        assert_eq!(
+            cat_counts.top_k(10, |b| b),
+            vec!()
+        );
+
+        Ok(())
+    }
 
     #[test]
     fn test_terms_agg() -> Result<()> {
