@@ -19,9 +19,9 @@ let agg = filter_agg(
         )
     )
 );
-let searcher = AggSearcher::from_reader(index_reader);
+let searcher = index_reader.searcher();
 // The result type is specified as an example, it can be omitted
-let agg_result: (u64, TermsAggResult<u64, (u64, Option<f64>)>) = searcher.search(&AllQuery, &agg);
+let agg_result: (u64, TermsAggResult<u64, (u64, Option<f64>)>) = searcher.agg_search(&AllQuery, &agg);
 // Top 10 categories by document count
 let top10_count = agg_result.1.top_k(10, |b| b.0);
 // Top 10 categories by minimum price

@@ -5,8 +5,7 @@ use rand::prelude::*;
 use rand::SeedableRng;
 use rand_pcg::Pcg32;
 
-use tantivy::{Document, Index, IndexWriter, Result, Term};
-use tantivy::directory::RAMDirectory;
+use tantivy::{Document, IndexWriter, Result, Term};
 use tantivy::query::AllQuery;
 
 extern crate tantivy_aggregations;
@@ -18,18 +17,15 @@ use tantivy_aggregations::terms::{terms_agg_u64, terms_agg_u64s};
 extern crate test;
 use test::{Bencher, black_box};
 
-use test_fixtures::ProductSchema;
+use test_fixtures::{ProductSchema, ProductIndex};
 
 #[bench]
 fn bench_terms_agg(b: &mut Bencher) -> Result<()> {
-    let dir = RAMDirectory::create();
-    let schema = ProductSchema::create();
-    let index = Index::create(dir, schema.schema.clone())?;
-    let mut index_writer = index.writer(10_000_000)?;
-    index_test_products(&mut index_writer, &schema)?;
+    let mut product_index = ProductIndex::create_in_ram(10)?;
+    index_test_products(&mut product_index.writer, &product_index.schema)?;
+    product_index.reader.reload()?;
 
-    let index_reader = index.reader()?;
-    let searcher = AggSearcher::from_reader(index_reader);
+    let searcher = product_index.reader.searcher();
     dbg!(searcher.num_docs());
     dbg!(searcher.segment_readers().len());
 
@@ -57,12 +53,14 @@ fn bench_terms_agg(b: &mut Bencher) -> Result<()> {
 //        black_box(cat_counts);
 //    });
 
-    let price_hist_agg = histogram_agg_f64(schema.price, 10_f64, count_agg());
-    let price_histogram = searcher.search(&AllQuery, &price_hist_agg)?;
+    let price_hist_agg = histogram_agg_f64(
+        product_index.schema.price, 10_f64, count_agg()
+    );
+    let price_histogram = searcher.agg_search(&AllQuery, &price_hist_agg)?;
     println!("Price histogram: {:?}", price_histogram.buckets());
 
     b.iter(|| {
-        let price_histogram = searcher.search(&AllQuery,  &price_hist_agg)
+        let price_histogram = searcher.agg_search(&AllQuery,  &price_hist_agg)
             .expect("Search failed");
         black_box(price_histogram);
     });
