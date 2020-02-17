@@ -188,14 +188,15 @@ mod tests {
 
     #[test]
     fn test_histogram_agg() -> Result<()> {
-        let product_index = ProductIndex::create_in_ram(3_u16)?;
+        let mut product_index = ProductIndex::create_in_ram(3_u16)?;
+        product_index.index_test_products()?;
 
-        let searcher = AggSearcher::from_reader(product_index.reader);
+        let searcher = product_index.reader.searcher();
 
         let price_hist_agg = histogram_agg_f64(
             product_index.schema.price, 10.0_f64, count_agg()
         );
-        let price_hist = searcher.search(&AllQuery, &price_hist_agg)?;
+        let price_hist = searcher.agg_search(&AllQuery, &price_hist_agg)?;
         assert_eq!(
             price_hist.buckets(),
             vec!(
@@ -218,9 +219,9 @@ mod tests {
 
     #[test]
     fn test_nested_histogram_agg() -> Result<()> {
-        let product_index = ProductIndex::create_in_ram(3_u16)?;
-
-        let searcher = AggSearcher::from_reader(product_index.reader);
+        let mut product_index = ProductIndex::create_in_ram(3_u16)?;
+        product_index.index_test_products()?;
+        let searcher = product_index.reader.searcher();
 
         let price_hist_for_tags_agg = terms_agg_u64s(
             product_index.schema.tag_ids,
@@ -231,7 +232,7 @@ mod tests {
                 )
             )
         );
-        let price_hist_for_tags = searcher.search(&AllQuery, &price_hist_for_tags_agg)?;
+        let price_hist_for_tags = searcher.agg_search(&AllQuery, &price_hist_for_tags_agg)?;
         let top_tags = price_hist_for_tags.top_k(3, |b| b.0);
         assert_eq!(top_tags.len(), 3);
 

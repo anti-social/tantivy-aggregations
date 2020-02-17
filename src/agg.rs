@@ -9,12 +9,6 @@ pub struct AggSegmentContext<'r, 's> {
     pub scorer: &'s dyn Scorer,
 }
 
-//pub trait Fruit: Send {
-//    type Flower: Copy;
-//
-//    fn create(&self, flower: Flower) -> Self;
-//}
-
 pub trait Agg {
     type Fruit: Default + Debug + Send;
     type Child: PreparedAgg<Fruit= Self::Fruit>;

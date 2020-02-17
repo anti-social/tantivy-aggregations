@@ -5,3 +5,5 @@ pub mod metric;
 pub mod searcher;
 pub mod terms;
 pub mod tuple;
+
+pub use searcher::AggSearcher;

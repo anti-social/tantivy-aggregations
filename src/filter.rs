@@ -109,45 +109,39 @@ where
 
 #[cfg(test)]
 mod tests {
-    use tantivy::{Index, Result, Term};
-    use tantivy::directory::RAMDirectory;
+    use tantivy::{Result, Term};
     use tantivy::query::{AllQuery, TermQuery, RangeQuery};
     use tantivy::schema::IndexRecordOption;
 
-    use test_fixtures::{ProductSchema, index_test_products};
+    use test_fixtures::ProductIndex;
 
-    use crate::searcher::AggSearcher;
+    use crate::AggSearcher;
     use crate::metric::count_agg;
     use super::filter_agg;
 
     #[test]
     fn test_filter_agg() -> Result<()> {
-        let dir = RAMDirectory::create();
-        let schema = ProductSchema::create();
-        let index = Index::create(dir, schema.schema.clone())?;
-        let mut index_writer = index.writer(3_000_000)?;
-        index_test_products(&mut index_writer, &schema)?;
-
-        let index_reader = index.reader()?;
-        let searcher = AggSearcher::from_reader(index_reader);
+        let mut product_index = ProductIndex::create_in_ram(3)?;
+        product_index.index_test_products()?;
+        let searcher = product_index.reader.searcher();
 
         let filter_query = TermQuery::new(
-            Term::from_field_u64(schema.category_id, 1_u64),
+            Term::from_field_u64(product_index.schema.category_id, 1_u64),
             IndexRecordOption::Basic
         );
         let agg = filter_agg(&filter_query, count_agg());
-        let filtered_agg = searcher.search(&AllQuery, &agg)?;
+        let filtered_agg = searcher.agg_search(&AllQuery, &agg)?;
         assert_eq!(
             filtered_agg, 2_u64
         );
 
         let filter_query = TermQuery::new(
-            Term::from_field_u64(schema.category_id, 2_u64),
+            Term::from_field_u64(product_index.schema.category_id, 2_u64),
             IndexRecordOption::Basic
         );
         let agg = filter_agg(&filter_query, count_agg());
-        let filtered_agg = searcher.search(
-            &RangeQuery::new_f64(schema.price, 100_f64..200_f64),
+        let filtered_agg = searcher.agg_search(
+            &RangeQuery::new_f64(product_index.schema.price, 100_f64..200_f64),
             &agg
         )?;
         assert_eq!(

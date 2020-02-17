@@ -354,15 +354,16 @@ mod tests {
     use super::count_agg;
     use super::{min_agg_u64, min_agg_u64s, min_agg_f64, min_agg_date};
     use super::{max_agg_u64, max_agg_u64s, max_agg_f64, max_agg_date};
-    use crate::searcher::AggSearcher;
+    use crate::AggSearcher;
 
     #[test]
     fn test_count() -> Result<()> {
-        let product_index = ProductIndex::create_in_ram(3)?;
-        let searcher = AggSearcher::from_reader(product_index.reader);
+        let mut product_index = ProductIndex::create_in_ram(3)?;
+        product_index.index_test_products()?;
+        let searcher = product_index.reader.searcher();
 
         let agg = count_agg();
-        let count = searcher.search(&AllQuery, &agg)?;
+        let count = searcher.agg_search(&AllQuery, &agg)?;
 
         assert_eq!(count, 5);
 
@@ -371,28 +372,29 @@ mod tests {
 
     #[test]
     fn test_min() -> Result<()> {
-        let product_index = ProductIndex::create_in_ram(3)?;
-        let searcher = AggSearcher::from_reader(product_index.reader);
+        let mut product_index = ProductIndex::create_in_ram(3)?;
+        product_index.index_test_products()?;
+        let searcher = product_index.reader.searcher();
 
         assert_eq!(
-            searcher.search(&AllQuery, &min_agg_u64(product_index.schema.positive_opinion_percent))?,
+            searcher.agg_search(&AllQuery, &min_agg_u64(product_index.schema.positive_opinion_percent))?,
             Some(71_u64)
         );
 
         assert_eq!(
-            searcher.search(&AllQuery, &min_agg_date(product_index.schema.date_created))?,
+            searcher.agg_search(&AllQuery, &min_agg_date(product_index.schema.date_created))?,
             Some(
                 DateTime::parse_from_rfc3339("1970-01-01T00:00:00+00:00").unwrap().with_timezone(&Utc)
             )
         );
 
         assert_eq!(
-            searcher.search(&AllQuery, &min_agg_f64(product_index.schema.price))?,
+            searcher.agg_search(&AllQuery, &min_agg_f64(product_index.schema.price))?,
             Some(0.5_f64)
         );
 
         assert_eq!(
-            searcher.search(&AllQuery, &min_agg_u64s(product_index.schema.tag_ids))?,
+            searcher.agg_search(&AllQuery, &min_agg_u64s(product_index.schema.tag_ids))?,
             Some(111_u64)
         );
 
@@ -401,28 +403,29 @@ mod tests {
 
     #[test]
     fn test_max() -> Result<()> {
-        let product_index = ProductIndex::create_in_ram(3)?;
-        let searcher = AggSearcher::from_reader(product_index.reader);
+        let mut product_index = ProductIndex::create_in_ram(3)?;
+        product_index.index_test_products()?;
+        let searcher = product_index.reader.searcher();
 
         assert_eq!(
-            searcher.search(&AllQuery, &max_agg_f64(product_index.schema.price))?,
+            searcher.agg_search(&AllQuery, &max_agg_f64(product_index.schema.price))?,
             Some(100.01_f64)
         );
 
         assert_eq!(
-            searcher.search(&AllQuery, &max_agg_u64(product_index.schema.positive_opinion_percent))?,
+            searcher.agg_search(&AllQuery, &max_agg_u64(product_index.schema.positive_opinion_percent))?,
             Some(100_u64)
         );
 
         assert_eq!(
-            searcher.search(&AllQuery, &max_agg_date(product_index.schema.date_created))?,
+            searcher.agg_search(&AllQuery, &max_agg_date(product_index.schema.date_created))?,
             Some(
                 DateTime::parse_from_rfc3339("2020-01-01T00:59:59+00:00").unwrap().with_timezone(&Utc)
             )
         );
 
         assert_eq!(
-            searcher.search(&AllQuery, &max_agg_u64s(product_index.schema.tag_ids))?,
+            searcher.agg_search(&AllQuery, &max_agg_u64s(product_index.schema.tag_ids))?,
             Some(511_u64)
         );
 

@@ -5,5 +5,4 @@ authors = ["Alexander Koval <kovalidis@gmail.com>"]
 edition = "2018"
 
 [dependencies]
-# tantivy = "0.11.3"
-tantivy = { git = "https://github.com/anti-social/tantivy", rev = "eba30d47" }
+tantivy = { git = "https://github.com/tantivy-search/tantivy", rev = "14735ce" }

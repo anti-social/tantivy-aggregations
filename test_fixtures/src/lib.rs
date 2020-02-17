@@ -15,8 +15,7 @@ impl ProductIndex {
         let dir = RAMDirectory::create();
         let schema = ProductSchema::create();
         let index = Index::create(dir, schema.schema.clone())?;
-        let mut index_writer = index.writer(heap_size_in_megabytes as usize * 1_000_000)?;
-        index_test_products(&mut index_writer, &schema)?;
+        let index_writer = index.writer(heap_size_in_megabytes as usize * 1_000_000)?;
         let index_reader = index.reader()?;
 
         Ok(Self {
@@ -25,6 +24,57 @@ impl ProductIndex {
             writer: index_writer,
             reader: index_reader,
         })
+    }
+
+    pub fn index_test_products(&mut self) -> Result<u64> {
+        self.writer.add_document(doc!(
+            self.schema.id => 1_u64,
+            self.schema.category_id => 1_u64,
+            self.schema.tag_ids => 111_u64,
+            self.schema.tag_ids => 112_u64,
+            self.schema.tag_ids => 211_u64,
+            self.schema.price => 9.99_f64,
+            self.schema.positive_opinion_percent => 82_u64,
+            self.schema.date_created => DateTime::parse_from_rfc3339("2019-12-31T23:59:59+00:00").unwrap().with_timezone(&Utc),
+        ));
+        self.writer.add_document(doc!(
+            self.schema.id => 2_u64,
+            self.schema.category_id => 1_u64,
+            self.schema.tag_ids => 111_u64,
+            self.schema.tag_ids => 211_u64,
+            self.schema.tag_ids => 320_u64,
+            self.schema.price => 10_f64,
+            self.schema.positive_opinion_percent => 100_u64,
+            self.schema.date_created => DateTime::parse_from_rfc3339("2020-01-01T00:00:00+00:00").unwrap().with_timezone(&Utc),
+        ));
+        self.writer.add_document(doc!(
+            self.schema.id => 3_u64,
+            self.schema.category_id => 2_u64,
+            self.schema.tag_ids => 211_u64,
+            self.schema.tag_ids => 311_u64,
+            self.schema.price => 0.5_f64,
+            self.schema.positive_opinion_percent => 71_u64,
+        ));
+        self.writer.add_document(doc!(
+            self.schema.id => 4_u64,
+            self.schema.category_id => 2_u64,
+            self.schema.tag_ids => 320_u64,
+            self.schema.price => 50_f64,
+            self.schema.positive_opinion_percent => 85_u64,
+            self.schema.date_created => DateTime::parse_from_rfc3339("2019-12-31T23:59:59+01:00").unwrap().with_timezone(&Utc),
+        ));
+        self.writer.add_document(doc!(
+            self.schema.id => 5_u64,
+            self.schema.category_id => 2_u64,
+            self.schema.tag_ids => 311_u64,
+            self.schema.tag_ids => 511_u64,
+            self.schema.price => 100.01_f64,
+            self.schema.positive_opinion_percent => 99_u64,
+            self.schema.date_created => DateTime::parse_from_rfc3339("2019-12-31T23:59:59-01:00").unwrap().with_timezone(&Utc),
+        ));
+        let commit_res = self.writer.commit();
+        self.reader.reload()?;
+        commit_res
     }
 }
 
@@ -68,53 +118,4 @@ impl ProductSchema {
             date_created,
         }
     }
-}
-
-pub fn index_test_products(writer: &mut IndexWriter, schema: &ProductSchema) -> Result<u64> {
-    writer.add_document(doc!(
-        schema.id => 1_u64,
-        schema.category_id => 1_u64,
-        schema.tag_ids => 111_u64,
-        schema.tag_ids => 112_u64,
-        schema.tag_ids => 211_u64,
-        schema.price => 9.99_f64,
-        schema.positive_opinion_percent => 82_u64,
-        schema.date_created => DateTime::parse_from_rfc3339("2019-12-31T23:59:59+00:00").unwrap().with_timezone(&Utc),
-    ));
-    writer.add_document(doc!(
-        schema.id => 2_u64,
-        schema.category_id => 1_u64,
-        schema.tag_ids => 111_u64,
-        schema.tag_ids => 211_u64,
-        schema.tag_ids => 320_u64,
-        schema.price => 10_f64,
-        schema.positive_opinion_percent => 100_u64,
-        schema.date_created => DateTime::parse_from_rfc3339("2020-01-01T00:00:00+00:00").unwrap().with_timezone(&Utc),
-    ));
-    writer.add_document(doc!(
-        schema.id => 3_u64,
-        schema.category_id => 2_u64,
-        schema.tag_ids => 211_u64,
-        schema.tag_ids => 311_u64,
-        schema.price => 0.5_f64,
-        schema.positive_opinion_percent => 71_u64,
-    ));
-    writer.add_document(doc!(
-        schema.id => 4_u64,
-        schema.category_id => 2_u64,
-        schema.tag_ids => 320_u64,
-        schema.price => 50_f64,
-        schema.positive_opinion_percent => 85_u64,
-        schema.date_created => DateTime::parse_from_rfc3339("2019-12-31T23:59:59+01:00").unwrap().with_timezone(&Utc),
-    ));
-    writer.add_document(doc!(
-        schema.id => 5_u64,
-        schema.category_id => 2_u64,
-        schema.tag_ids => 311_u64,
-        schema.tag_ids => 511_u64,
-        schema.price => 100.01_f64,
-        schema.positive_opinion_percent => 99_u64,
-        schema.date_created => DateTime::parse_from_rfc3339("2019-12-31T23:59:59-01:00").unwrap().with_timezone(&Utc),
-    ));
-    writer.commit()
 }

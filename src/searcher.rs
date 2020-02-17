@@ -1,25 +1,28 @@
-//use tantivy::collector::Collector;
-//use tantivy::collector::SegmentCollector;
 use tantivy::query::Query;
-use tantivy::query::Scorer;
 use tantivy::query::Weight;
-use tantivy::schema::Document;
-use tantivy::schema::Schema;
-//use tantivy::schema::Field;
-use tantivy::schema::Term;
-//use tantivy::space_usage::SearcherSpaceUsage;
-//use tantivy::termdict::TermMerger;
-use tantivy::{DocAddress, IndexReader, LeasedItem};
 use tantivy::Executor;
-use tantivy::Index;
-//use tantivy::InvertedIndexReader;
 use tantivy::Result;
+use tantivy::Searcher;
 use tantivy::SegmentReader;
-use std::fmt;
+
 use std::ops::Deref;
-//use std::sync::Arc;
 
 use crate::agg::{Agg, AggSegmentContext, PreparedAgg, SegmentAgg};
+
+pub trait AggSearcher {
+    fn agg_search<A: Agg>(
+        &self, query: &dyn Query, agg: &A
+    ) -> Result<A::Fruit> {
+        self.agg_search_with_executor(query, agg, &Executor::SingleThread)
+    }
+
+    fn agg_search_with_executor<A: Agg>(
+        &self,
+        query: &dyn Query,
+        agg: &A,
+        executor: &Executor,
+    ) -> Result<A::Fruit>;
+}
 
 fn collect_segment<A: PreparedAgg>(
     agg: &A,
@@ -47,108 +50,17 @@ fn collect_segment<A: PreparedAgg>(
     Ok(())
 }
 
-/// Holds a list of `SegmentReader`s ready for search.
-///
-/// It guarantees that the `Segment` will not be removed before
-/// the destruction of the `Searcher`.
-///
-pub struct AggSearcher {
-    inner: LeasedItem<tantivy::Searcher>,
-}
-
-impl AggSearcher {
-    /// Creates a new `Searcher`
-    pub fn from_reader(
-        reader: IndexReader,
-    ) -> Self {
-        Self {
-            inner: reader.searcher(),
-        }
-    }
-
-    pub fn searcher(&self) -> &tantivy::Searcher {
-        &self.inner
-    }
-
-    /// Returns the `Index` associated to the `Searcher`
-    pub fn index(&self) -> &Index {
-        &self.inner.index()
-    }
-
-    /// Fetches a document from tantivy's store given a `DocAddress`.
-    ///
-    /// The searcher uses the segment ordinal to route the
-    /// the request to the right `Segment`.
-    pub fn doc(&self, doc_address: DocAddress) -> Result<Document> {
-        self.inner.doc(doc_address)
-    }
-
-    /// Access the schema associated to the index of this searcher.
-    pub fn schema(&self) -> &Schema {
-        self.inner.schema()
-    }
-
-    /// Returns the overall number of documents in the index.
-    pub fn num_docs(&self) -> u64 {
-        self.inner.num_docs()
-    }
-
-    /// Return the overall number of documents containing
-    /// the given term.
-    pub fn doc_freq(&self, term: &Term) -> u64 {
-        self.inner.doc_freq(term)
-    }
-
-    /// Return the list of segment readers
-    pub fn segment_readers(&self) -> &[SegmentReader] {
-        self.inner.segment_readers()
-    }
-
-    /// Returns the segment_reader associated with the given segment_ordinal
-    pub fn segment_reader(&self, segment_ord: u32) -> &SegmentReader {
-        self.inner.segment_reader(segment_ord)
-    }
-
-    /// Runs a query on the segment readers wrapped by the searcher.
-    ///
-    /// Search works as follows :
-    ///
-    ///  First the weight object associated to the query is created.
-    ///
-    ///  Then, the query loops over the segments and for each segment :
-    ///  - setup the collector and informs it that the segment being processed has changed.
-    ///  - creates a SegmentCollector for collecting documents associated to the segment
-    ///  - creates a `Scorer` object associated for this segment
-    ///  - iterate through the matched documents and push them to the segment collector.
-    ///
-    ///  Finally, the Collector merges each of the child collectors into itself for result usability
-    ///  by the caller.
-    pub fn search<A: Agg>(&self, query: &dyn Query, agg: &A) -> Result<A::Fruit> {
-        let executor = self.index().search_executor();
-        self.search_with_executor(query, agg, executor)
-    }
-
-    /// Same as [`search(...)`](#method.search) but multithreaded.
-    ///
-    /// The current implementation is rather naive :
-    /// multithreading is by splitting search into as many task
-    /// as there are segments.
-    ///
-    /// It is powerless at making search faster if your index consists in
-    /// one large segment.
-    ///
-    /// Also, keep in my multithreading a single query on several
-    /// threads will not improve your throughput. It can actually
-    /// hurt it. It will however, decrease the average response time.
-    pub fn search_with_executor<A: Agg>(
+impl AggSearcher for Searcher {
+    /// Search with aggregations
+    fn agg_search_with_executor<A: Agg>(
         &self,
         query: &dyn Query,
         agg: &A,
         executor: &Executor,
     ) -> Result<A::Fruit> {
         let scoring_enabled = agg.requires_scoring();
-        let weight = query.weight(self.inner.deref(), scoring_enabled)?;
-        let prepared_agg = agg.prepare(self.inner.deref())?;
+        let weight = query.weight(self.deref(), scoring_enabled)?;
+        let prepared_agg = agg.prepare(self.deref())?;
         let segment_readers = self.segment_readers();
         let harvest = match executor {
             Executor::SingleThread => {
@@ -186,56 +98,5 @@ impl AggSearcher {
             }
         };
         Ok(harvest)
-    }
-
-//    /// Return the field searcher associated to a `Field`.
-//    pub fn field(&self, field: Field) -> FieldSearcher {
-//        let inv_index_readers = self
-//            .segment_readers
-//            .iter()
-//            .map(|segment_reader| segment_reader.inverted_index(field))
-//            .collect::<Vec<_>>();
-//        FieldSearcher::new(inv_index_readers)
-//    }
-
-//    /// Summarize total space usage of this searcher.
-//    pub fn space_usage(&self) -> SearcherSpaceUsage {
-//        let mut space_usage = SearcherSpaceUsage::new();
-//        for segment_reader in self.segment_readers.iter() {
-//            space_usage.add_segment(segment_reader.space_usage());
-//        }
-//        space_usage
-//    }
-}
-
-//pub struct FieldSearcher {
-//    inv_index_readers: Vec<Arc<InvertedIndexReader>>,
-//}
-//
-//impl FieldSearcher {
-//    fn new(inv_index_readers: Vec<Arc<InvertedIndexReader>>) -> FieldSearcher {
-//        FieldSearcher { inv_index_readers }
-//    }
-//
-//    /// Returns a Stream over all of the sorted unique terms of
-//    /// for the given field.
-//    pub fn terms(&self) -> TermMerger<'_> {
-//        let term_streamers: Vec<_> = self
-//            .inv_index_readers
-//            .iter()
-//            .map(|inverted_index| inverted_index.terms().stream())
-//            .collect();
-//        TermMerger::new(term_streamers)
-//    }
-//}
-
-impl fmt::Debug for AggSearcher {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let segment_ids = self
-            .segment_readers()
-            .iter()
-            .map(SegmentReader::segment_id)
-            .collect::<Vec<_>>();
-        write!(f, "Searcher({:?})", segment_ids)
     }
 }

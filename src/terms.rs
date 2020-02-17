@@ -237,11 +237,10 @@ where
 mod tests {
     use std::cmp::Reverse;
 
-    use tantivy::{Index, Result};
-    use tantivy::directory::RAMDirectory;
+    use tantivy::Result;
     use tantivy::query::AllQuery;
 
-    use test_fixtures::{ProductSchema, index_test_products};
+    use test_fixtures::ProductIndex;
 
     use crate::metric::{count_agg, min_agg_f64};
     use crate::searcher::AggSearcher;
@@ -249,20 +248,16 @@ mod tests {
 
     #[test]
     fn test_terms_agg() -> Result<()> {
-        let dir = RAMDirectory::create();
-        let schema = ProductSchema::create();
-        let index = Index::create(dir, schema.schema.clone())?;
-        let mut index_writer = index.writer(3_000_000)?;
-        index_test_products(&mut index_writer, &schema)?;
+        let mut product_index = ProductIndex::create_in_ram(3)?;
+        product_index.index_test_products()?;
 
-        let index_reader = index.reader()?;
-        let searcher = AggSearcher::from_reader(index_reader);
+        let searcher = product_index.reader.searcher();
 
         let cat_agg = terms_agg_u64(
-            schema.category_id,
-            (count_agg(), min_agg_f64(schema.price))
+            product_index.schema.category_id,
+            (count_agg(), min_agg_f64(product_index.schema.price))
         );
-        let cat_counts = searcher.search(&AllQuery,  &cat_agg)?;
+        let cat_counts = searcher.agg_search(&AllQuery,  &cat_agg)?;
         let cat1_bucket = cat_counts.get(&1u64);
         assert_eq!(
             cat1_bucket,
