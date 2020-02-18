@@ -12,6 +12,45 @@ use tantivy::schema::Field;
 
 use crate::agg::{Agg, AggSegmentContext, PreparedAgg, SegmentAgg};
 
+fn all(_: u64) -> bool {
+    true
+}
+
+struct FilteredTermsAgg {
+    filter: fn(u64) -> bool,
+}
+
+impl FilteredTermsAgg {
+    fn new() -> Self {
+        Self {
+            filter: all
+        }
+    }
+
+    fn include(mut self, include: fn(u64) -> bool) -> Self {
+        self.filter = include;
+        self
+    }
+}
+
+//fn filtered_terms_agg_ex() -> FilteredTermsAgg<fn(u64) -> bool> {
+//    FilteredTermsAgg {
+//        filter: all
+//    }
+//}
+
+#[test]
+fn test_filtered_terms_agg() {
+    let _bare_agg = FilteredTermsAgg::new();
+
+    fn more_than_thousand(v: u64) -> bool {
+        v > 1000
+    }
+    let _agg_with_include = FilteredTermsAgg::new()
+        .include(more_than_thousand);
+}
+
+
 macro_rules! impl_terms_agg_for_type {
     ( $type:ty, $reader_fn:ident : $agg_fn:ident, $agg_struct:ident, $prepared_agg_struct:ident, $segment_agg_struct:ident ) => {
 
@@ -21,15 +60,31 @@ where
 {
     field: Field,
     sub_agg: SubAgg,
+    filter: fn($type) -> bool,
 }
 
 pub fn $agg_fn<SubAgg>(field: Field, sub_agg: SubAgg) -> $agg_struct<SubAgg>
 where
     SubAgg: Agg,
 {
+    fn any_value(_: $type) -> bool {
+        true
+    }
+
     $agg_struct {
         field,
         sub_agg,
+        filter: any_value,
+    }
+}
+
+impl<SubAgg> $agg_struct<SubAgg>
+where
+    SubAgg: Agg,
+{
+    pub fn include(mut self, include: fn($type) -> bool) -> Self {
+        self.filter = include;
+        self
     }
 }
 
@@ -45,6 +100,7 @@ where
         Ok(Self::Child {
             field: self.field,
             sub_agg: self.sub_agg.prepare(searcher)?,
+            filter: self.filter,
         })
     }
 
@@ -59,6 +115,7 @@ where
 {
     field: Field,
     sub_agg: SubAgg,
+    filter: fn($type) -> bool,
 }
 
 impl<SubAgg> PreparedAgg for $prepared_agg_struct<SubAgg>
@@ -75,7 +132,7 @@ where
                     ctx.reader.schema().get_field_entry(self.field)
                 )
             })?;
-        Ok(Self::Child::new(ff_reader, self.sub_agg.for_segment(ctx)?))
+        Ok(Self::Child::new(ff_reader, self.sub_agg.for_segment(ctx)?, self.filter))
     }
 
     fn merge(&self, harvest: &mut Self::Fruit, fruit: &Self::Fruit) {
@@ -99,14 +156,15 @@ where
 {
     ff_reader: FastFieldReader<$type>,
     sub_agg: SubAgg,
+    filter: fn($type) -> bool,
 }
 
 impl<SubAgg> $segment_agg_struct<SubAgg>
 where
     SubAgg: SegmentAgg,
 {
-    fn new(ff_reader: FastFieldReader<$type>, sub_agg: SubAgg) -> Self {
-        Self { ff_reader, sub_agg }
+    fn new(ff_reader: FastFieldReader<$type>, sub_agg: SubAgg, filter: fn($type) -> bool) -> Self {
+        Self { ff_reader, sub_agg, filter }
     }
 }
 
@@ -118,6 +176,9 @@ where
 
     fn collect(&mut self, doc: DocId, score: Score, agg_value: &mut Self::Fruit) {
         let key = self.ff_reader.get(doc);
+        if !(self.filter)(key) {
+            return;
+        }
         let bucket = agg_value.res.entry(key)
             .or_insert_with(|| self.sub_agg.create_fruit());
         self.sub_agg.collect(doc, score, bucket);
@@ -135,6 +196,7 @@ where
 {
     ff_reader: MultiValueIntFastFieldReader<$type>,
     sub_agg: SubAgg,
+    filter: fn($type) -> bool,
     vals: Vec<$type>,
 }
 
@@ -142,10 +204,11 @@ impl<SubAgg> $segment_agg_struct<SubAgg>
 where
     SubAgg: SegmentAgg,
 {
-    fn new(ff_reader: MultiValueIntFastFieldReader<$type>, sub_agg: SubAgg) -> Self {
+    fn new(ff_reader: MultiValueIntFastFieldReader<$type>, sub_agg: SubAgg, filter: fn($type) -> bool) -> Self {
         Self {
             ff_reader,
             sub_agg,
+            filter,
             vals: vec!(),
         }
     }
@@ -160,6 +223,9 @@ where
     fn collect(&mut self, doc: DocId, score: Score, agg_value: &mut Self::Fruit) {
         self.ff_reader.get_vals(doc, &mut self.vals);
         for &key in self.vals.iter() {
+            if !(self.filter)(key) {
+                continue;
+            }
             let bucket = agg_value.res.entry(key)
                 .or_insert_with(|| self.sub_agg.create_fruit());
             self.sub_agg.collect(doc, score, bucket);
@@ -254,7 +320,7 @@ mod tests {
         let cat_agg = terms_agg_u64(
             product_index.schema.category_id, count_agg()
         );
-        let cat_counts = searcher.agg_search(&AllQuery,  &cat_agg)?;
+        let cat_counts = searcher.agg_search(&AllQuery, &cat_agg)?;
         assert_eq!(
             cat_counts.top_k(10, |b| b),
             vec!()
@@ -274,7 +340,7 @@ mod tests {
             product_index.schema.category_id,
             (count_agg(), min_agg_f64(product_index.schema.price))
         );
-        let cat_counts = searcher.agg_search(&AllQuery,  &cat_agg)?;
+        let cat_counts = searcher.agg_search(&AllQuery, &cat_agg)?;
         let cat1_bucket = cat_counts.get(&1u64);
         assert_eq!(
             cat1_bucket,
@@ -314,6 +380,37 @@ mod tests {
             vec!(
                 (&1u64, &(2u64, Some(9.99_f64))),
             ),
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_filtered_terms_agg() -> Result<()> {
+        let mut product_index = ProductIndex::create_in_ram(3)?;
+        product_index.index_test_products()?;
+
+        let searcher = product_index.reader.searcher();
+
+        fn even_categories(v: u64) -> bool {
+            v % 2 == 0
+        }
+
+        let cat_agg = terms_agg_u64(
+            product_index.schema.category_id,
+            (count_agg(), min_agg_f64(product_index.schema.price))
+        )
+            .include(even_categories);
+        let cat_counts = searcher.agg_search(&AllQuery, &cat_agg)?;
+        let cat1_bucket = cat_counts.get(&1u64);
+        assert_eq!(
+            cat1_bucket,
+            None
+        );
+        let cat2_bucket = cat_counts.get(&2u64);
+        assert_eq!(
+            cat2_bucket,
+            Some(&(3u64, Some(0.5_f64)))
         );
 
         Ok(())
