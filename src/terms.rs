@@ -182,6 +182,200 @@ impl_terms_agg_for_type!(
     |i64, i64s : terms_agg_i64s, TermsAggI64s, PreparedTermsAggI64s, TermsSegmentAggI64s|
 );
 
+macro_rules! impl_filtered_terms_agg_for_type {
+    ( $type:ty, $reader_fn:ident : $agg_fn:ident, $agg_struct:ident, $prepared_agg_struct:ident, $segment_agg_struct:ident ) => {
+
+pub struct $agg_struct<F, SubAgg>
+where
+    F: Fn($type) -> bool,
+    SubAgg: Agg,
+{
+    field: Field,
+    sub_agg: SubAgg,
+    filter: F,
+}
+
+pub fn $agg_fn<F, SubAgg>(field: Field, sub_agg: SubAgg, filter: F) -> $agg_struct<F, SubAgg>
+where
+    F: Fn($type) -> bool,
+    SubAgg: Agg,
+{
+    $agg_struct {
+        field,
+        filter,
+        sub_agg,
+    }
+}
+
+impl<F, SubAgg> Agg for $agg_struct<F, SubAgg>
+where
+    F: Fn($type) -> bool + Sync + Copy,
+    SubAgg: Agg,
+    <SubAgg as Agg>::Child: PreparedAgg,
+{
+    type Fruit = TermsAggResult<$type, SubAgg::Fruit>;
+    type Child = $prepared_agg_struct<F, SubAgg::Child>;
+
+    fn prepare(&self, searcher: &Searcher) -> Result<Self::Child> {
+        Ok(Self::Child {
+            field: self.field,
+            filter: self.filter,
+            sub_agg: self.sub_agg.prepare(searcher)?,
+        })
+    }
+
+    fn requires_scoring(&self) -> bool {
+        false
+    }
+}
+
+pub struct $prepared_agg_struct<F, SubAgg>
+where
+    F: Fn($type) -> bool,
+    SubAgg: PreparedAgg,
+{
+    field: Field,
+    filter: F,
+    sub_agg: SubAgg,
+}
+
+impl<F, SubAgg> PreparedAgg for $prepared_agg_struct<F, SubAgg>
+where
+    F: Fn($type) -> bool + Sync + Copy,
+    SubAgg: PreparedAgg,
+{
+    type Fruit = TermsAggResult<$type, SubAgg::Fruit>;
+    type Child = $segment_agg_struct<F, SubAgg::Child>;
+
+    fn for_segment(&self, ctx: &AggSegmentContext) -> Result<Self::Child> {
+        let ff_reader = ctx.reader.fast_fields().$reader_fn(self.field)
+            .ok_or_else(|| {
+                FastFieldNotAvailableError::new(
+                    ctx.reader.schema().get_field_entry(self.field)
+                )
+            })?;
+        Ok(Self::Child::new(ff_reader, self.sub_agg.for_segment(ctx)?, self.filter))
+    }
+
+    fn merge(&self, harvest: &mut Self::Fruit, fruit: &Self::Fruit) {
+        for (key, bucket) in fruit.res.iter() {
+            let existing_bucket = harvest.res.entry(*key)
+                .or_insert_with(|| self.sub_agg.create_fruit());
+
+            self.sub_agg.merge(existing_bucket, bucket);
+        }
+    }
+}
+
+    };
+    ( SINGLE $(|$type:ty, $reader_fn:ident : $agg_fn:ident, $agg_struct:ident, $prepared_agg_struct:ident, $segment_agg_struct:ident|),+ ) => { $(
+
+impl_filtered_terms_agg_for_type!($type, $reader_fn : $agg_fn, $agg_struct, $prepared_agg_struct, $segment_agg_struct);
+
+pub struct $segment_agg_struct<F, SubAgg>
+where
+    F: Fn($type) -> bool,
+    SubAgg: SegmentAgg,
+{
+    ff_reader: FastFieldReader<$type>,
+    filter: F,
+    sub_agg: SubAgg,
+}
+
+impl<F, SubAgg> $segment_agg_struct<F, SubAgg>
+where
+    F: Fn($type) -> bool,
+    SubAgg: SegmentAgg,
+{
+    fn new(ff_reader: FastFieldReader<$type>, sub_agg: SubAgg, filter: F) -> Self {
+        Self { ff_reader, filter, sub_agg }
+    }
+}
+
+impl<F, SubAgg> SegmentAgg for $segment_agg_struct<F, SubAgg>
+where
+    F: Fn($type) -> bool,
+    SubAgg: SegmentAgg,
+{
+    type Fruit = TermsAggResult<$type, SubAgg::Fruit>;
+
+    fn collect(&mut self, doc: DocId, score: Score, agg_value: &mut Self::Fruit) {
+        let key = self.ff_reader.get(doc);
+        if !(self.filter)(key) {
+            return;
+        }
+        let bucket = agg_value.res.entry(key)
+            .or_insert_with(|| self.sub_agg.create_fruit());
+        self.sub_agg.collect(doc, score, bucket);
+    }
+}
+
+    )* };
+    ( MULTI $(|$type:ty, $reader_fn:ident : $agg_fn:ident, $agg_struct:ident, $prepared_agg_struct:ident, $segment_agg_struct:ident|),+ ) => { $(
+
+impl_filtered_terms_agg_for_type!($type, $reader_fn : $agg_fn, $agg_struct, $prepared_agg_struct, $segment_agg_struct);
+
+pub struct $segment_agg_struct<F, SubAgg>
+where
+    F: Fn($type) -> bool,
+    SubAgg: SegmentAgg,
+{
+    ff_reader: MultiValueIntFastFieldReader<$type>,
+    filter: F,
+    sub_agg: SubAgg,
+    vals: Vec<$type>,
+}
+
+impl<F, SubAgg> $segment_agg_struct<F, SubAgg>
+where
+    F: Fn($type) -> bool,
+    SubAgg: SegmentAgg,
+{
+    fn new(ff_reader: MultiValueIntFastFieldReader<$type>, sub_agg: SubAgg, filter: F) -> Self {
+        Self {
+            ff_reader,
+            filter,
+            sub_agg,
+            vals: vec!(),
+        }
+    }
+}
+
+impl<F, SubAgg> SegmentAgg for $segment_agg_struct<F, SubAgg>
+where
+    F: Fn($type) -> bool,
+    SubAgg: SegmentAgg,
+{
+    type Fruit = TermsAggResult<$type, SubAgg::Fruit>;
+
+    fn collect(&mut self, doc: DocId, score: Score, agg_value: &mut Self::Fruit) {
+        self.ff_reader.get_vals(doc, &mut self.vals);
+        for &key in self.vals.iter() {
+            if !(self.filter)(key) {
+                continue;
+            }
+            let bucket = agg_value.res.entry(key)
+                .or_insert_with(|| self.sub_agg.create_fruit());
+            self.sub_agg.collect(doc, score, bucket);
+        }
+    }
+}
+
+    )* };
+}
+
+impl_filtered_terms_agg_for_type!(
+    SINGLE
+    |u64, u64 : filtered_terms_agg_u64, FilteredTermsAggU64, PreparedFilteredTermsAggU64, FilteredTermsSegmentAggU64|,
+    |i64, i64 : filtered_terms_agg_i64, FilteredTermsAggI64, PreparedFilteredTermsAggI64, FilteredTermsSegmentAggI64|
+);
+
+impl_filtered_terms_agg_for_type!(
+    MULTI
+    |u64, u64s : filtered_terms_agg_u64s, FilteredTermsAggU64s, PreparedFilteredTermsAggU64s, FilteredTermsSegmentAggU64s|,
+    |i64, i64s : filtered_terms_agg_i64s, FilteredTermsAggI64s, PreparedFilteredTermsAggI64s, FilteredTermsSegmentAggI64s|
+);
+
 #[derive(Default, Debug)]
 pub struct TermsAggResult<K, T>
 where
@@ -244,7 +438,7 @@ mod tests {
 
     use crate::metric::{count_agg, min_agg_f64};
     use crate::searcher::AggSearcher;
-    use super::terms_agg_u64;
+    use super::{filtered_terms_agg_u64, terms_agg_u64};
 
     #[test]
     fn test_empty_terms_agg() -> Result<()> {
@@ -314,6 +508,34 @@ mod tests {
             vec!(
                 (&1u64, &(2u64, Some(9.99_f64))),
             ),
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_filtered_terms_agg() -> Result<()> {
+        let mut product_index = ProductIndex::create_in_ram(3)?;
+        product_index.index_test_products()?;
+
+        let searcher = product_index.reader.searcher();
+
+        let even = 0_u64;
+        let cat_agg = filtered_terms_agg_u64(
+            product_index.schema.category_id,
+            (count_agg(), min_agg_f64(product_index.schema.price)),
+            |cat_id| cat_id % 2 == even
+        );
+        let cat_counts = searcher.agg_search(&AllQuery,  &cat_agg)?;
+        let cat1_bucket = cat_counts.get(&1u64);
+        assert_eq!(
+            cat1_bucket,
+            None
+        );
+        let cat2_bucket = cat_counts.get(&2u64);
+        assert_eq!(
+            cat2_bucket,
+            Some(&(3u64, Some(0.5_f64)))
         );
 
         Ok(())
