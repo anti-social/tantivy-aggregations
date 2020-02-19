@@ -79,3 +79,35 @@ impl_agg_for_tuple!(A1 => 0, A2 => 1, A3 => 2, A4 => 3, A5 => 4, A6 => 5, A7 => 
 impl_agg_for_tuple!(A1 => 0, A2 => 1, A3 => 2, A4 => 3, A5 => 4, A6 => 5, A7 => 6, A8 => 7);
 impl_agg_for_tuple!(A1 => 0, A2 => 1, A3 => 2, A4 => 3, A5 => 4, A6 => 5, A7 => 6, A8 => 7, A9 => 8);
 impl_agg_for_tuple!(A1 => 0, A2 => 1, A3 => 2, A4 => 3, A5 => 4, A6 => 5, A7 => 6, A8 => 7, A9 => 8, A10 => 9);
+
+#[cfg(test)]
+mod tests {
+    use tantivy::Result;
+    use tantivy::query::AllQuery;
+
+    use test_fixtures::ProductIndex;
+
+    use crate::AggSearcher;
+    use crate::metric::{count_agg, min_agg_f64, max_agg_f64};
+
+    #[test]
+    fn test_tuple() -> Result<()> {
+        let mut product_index = ProductIndex::create_in_ram(3)?;
+        product_index.index_test_products()?;
+        let searcher = product_index.reader.searcher();
+
+        assert_eq!(
+            searcher.agg_search(
+                &AllQuery,
+                &(
+                    count_agg(),
+                    min_agg_f64(product_index.schema.price),
+                    max_agg_f64(product_index.schema.price),
+                )
+            )?,
+            (5_u64, Some(0.5_f64), Some(100.01_f64))
+        );
+
+        Ok(())
+    }
+}
