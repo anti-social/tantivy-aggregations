@@ -78,9 +78,9 @@ where
         Ok(Self::Child::new(ff_reader, self.sub_agg.for_segment(ctx)?))
     }
 
-    fn merge(&self, harvest: &mut Self::Fruit, fruit: &Self::Fruit) {
-        for (key, bucket) in fruit.res.iter() {
-            let existing_bucket = harvest.res.entry(*key)
+    fn merge(&self, harvest: &mut Self::Fruit, fruit: Self::Fruit) {
+        for (key, bucket) in fruit.res {
+            let existing_bucket = harvest.res.entry(key)
                 .or_insert_with(|| self.sub_agg.create_fruit());
 
             self.sub_agg.merge(existing_bucket, bucket);
@@ -257,9 +257,9 @@ where
         Ok(Self::Child::new(ff_reader, self.sub_agg.for_segment(ctx)?, self.filter))
     }
 
-    fn merge(&self, harvest: &mut Self::Fruit, fruit: &Self::Fruit) {
-        for (key, bucket) in fruit.res.iter() {
-            let existing_bucket = harvest.res.entry(*key)
+    fn merge(&self, harvest: &mut Self::Fruit, fruit: Self::Fruit) {
+        for (key, bucket) in fruit.res {
+            let existing_bucket = harvest.res.entry(key)
                 .or_insert_with(|| self.sub_agg.create_fruit());
 
             self.sub_agg.merge(existing_bucket, bucket);

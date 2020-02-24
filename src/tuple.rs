@@ -42,9 +42,9 @@ where $(
         )*))
     }
 
-    fn merge(&self, acc: &mut Self::Fruit, fruit: &Self::Fruit) {
+    fn merge(&self, acc: &mut Self::Fruit, fruit: Self::Fruit) {
         $(
-            self.$n.merge(&mut acc.$n, &fruit.$n);
+            self.$n.merge(&mut acc.$n, fruit.$n);
         )*
     }
 }

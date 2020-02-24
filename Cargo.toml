@@ -8,6 +8,7 @@ edition = "2018"
 
 [dependencies]
 tantivy = { git = "https://github.com/tantivy-search/tantivy", rev = "14735ce" }
+quantiles = "0.7"
 
 [dev-dependencies]
 rand = "0.7"

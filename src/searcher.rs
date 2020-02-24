@@ -91,7 +91,7 @@ impl AggSearcher for Searcher {
                     segment_readers.iter().enumerate(),
                 )?;
                 let mut harvest = prepared_agg.create_fruit();
-                for fruit in fruits.iter() {
+                for fruit in fruits {
                     prepared_agg.merge(&mut harvest, fruit);
                 }
                 harvest

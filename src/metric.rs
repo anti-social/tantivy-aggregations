@@ -38,8 +38,8 @@ impl PreparedAgg for PreparedCountAgg {
         Ok(Self::Child {})
     }
 
-    fn merge(&self, acc: &mut Self::Fruit, other: &Self::Fruit) {
-        *acc += *other
+    fn merge(&self, acc: &mut Self::Fruit, other: Self::Fruit) {
+        *acc += other
     }
 }
 
@@ -97,8 +97,8 @@ impl PreparedAgg for $prepared_agg_struct {
         Ok(Self::Child::new(ff_reader))
     }
 
-    fn merge(&self, acc: &mut Self::Fruit, fruit: &Self::Fruit) {
-        match *fruit {
+    fn merge(&self, acc: &mut Self::Fruit, fruit: Self::Fruit) {
+        match fruit {
             None => return,
             Some(v) => {
                 if let Some(ref mut min_val) = acc {
@@ -242,8 +242,8 @@ impl PreparedAgg for $prepared_agg_struct {
         Ok(Self::Child::new(ff_reader))
     }
 
-    fn merge(&self, acc: &mut Self::Fruit, fruit: &Self::Fruit) {
-        match *fruit {
+    fn merge(&self, acc: &mut Self::Fruit, fruit: Self::Fruit) {
+        match fruit {
             None => return,
             Some(v) => {
                 if let Some(ref mut max_val) = acc {
