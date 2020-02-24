@@ -4,22 +4,25 @@ use std::fmt::Debug;
 use std::ops::{Add, Div, Sub};
 
 use tantivy::{DocId, Result, Score, Searcher};
-use tantivy::fastfield::{FastFieldNotAvailableError, FastFieldReader};
+use tantivy::fastfield::{FastFieldNotAvailableError, FastFieldReader, MultiValueIntFastFieldReader};
 use tantivy::schema::Field;
 
 use crate::agg::{Agg, SegmentAgg, PreparedAgg, AggSegmentContext};
 
-pub struct PercentilesAggF64 {
+macro_rules! impl_percentiles_agg_for_type {
+    ( $type:ty, $reader_fn:ident : $agg_fn:ident, $agg_struct:ident, $prepared_agg_struct:ident, $segment_agg_struct:ident ) => {
+
+pub struct $agg_struct {
     field: Field,
 }
 
-pub fn percentiles_agg_f64(field: Field) -> PercentilesAggF64 {
-    PercentilesAggF64 { field }
+pub fn $agg_fn(field: Field) -> $agg_struct {
+    $agg_struct { field }
 }
 
-impl Agg for PercentilesAggF64 {
-    type Fruit = Percentiles<f64>;
-    type Child = PercentilesPreparedAggF64;
+impl Agg for $agg_struct {
+    type Fruit = Percentiles<$type>;
+    type Child = $prepared_agg_struct;
 
     fn prepare(&self, _: &Searcher) -> Result<Self::Child> {
         Ok(Self::Child { field: self.field })
@@ -30,22 +33,22 @@ impl Agg for PercentilesAggF64 {
     }
 }
 
-pub struct PercentilesPreparedAggF64 {
-    field: Field
+pub struct $prepared_agg_struct {
+    field: Field,
 }
 
-impl PreparedAgg for PercentilesPreparedAggF64 {
-    type Fruit = Percentiles<f64>;
-    type Child = PercentilesSegmentAggF64;
+impl PreparedAgg for $prepared_agg_struct {
+    type Fruit = Percentiles<$type>;
+    type Child = $segment_agg_struct;
 
     fn for_segment(&self, ctx: &AggSegmentContext) -> Result<Self::Child> {
-        let ff_reader = ctx.reader.fast_fields().f64(self.field)
+        let ff_reader = ctx.reader.fast_fields().$reader_fn(self.field)
             .ok_or_else(|| {
                 FastFieldNotAvailableError::new(
                     ctx.reader.schema().get_field_entry(self.field)
                 )
             })?;
-        Ok(Self::Child { ff_reader })
+        Ok(Self::Child::new(ff_reader))
     }
 
     fn merge(&self, acc: &mut Self::Fruit, fruit: Self::Fruit) {
@@ -55,18 +58,72 @@ impl PreparedAgg for PercentilesPreparedAggF64 {
     }
 }
 
-pub struct PercentilesSegmentAggF64 {
-    ff_reader: FastFieldReader<f64>,
+    };
+    ( SINGLE $(|$type:ty, $reader_fn:ident : $agg_fn:ident, $agg_struct:ident, $prepared_agg_struct:ident, $segment_agg_struct:ident|),+ ) => { $(
+
+impl_percentiles_agg_for_type!($type, $reader_fn : $agg_fn, $agg_struct, $prepared_agg_struct, $segment_agg_struct);
+
+pub struct $segment_agg_struct {
+    ff_reader: FastFieldReader<$type>,
 }
 
-impl SegmentAgg for PercentilesSegmentAggF64 {
-    type Fruit = Percentiles<f64>;
+impl $segment_agg_struct {
+    fn new(ff_reader: FastFieldReader<$type>) -> Self {
+        Self { ff_reader }
+    }
+}
+
+impl SegmentAgg for $segment_agg_struct {
+    type Fruit = Percentiles<$type>;
 
     fn collect(&mut self, doc: DocId, _: Score, fruit: &mut Self::Fruit) {
         let v = self.ff_reader.get(doc);
         fruit.quantiles.insert(v);
     }
 }
+
+    )* };
+    ( MULTI $(|$type:ty, $reader_fn:ident : $agg_fn:ident, $agg_struct:ident, $prepared_agg_struct:ident, $segment_agg_struct:ident|),+ ) => { $(
+
+impl_percentiles_agg_for_type!($type, $reader_fn : $agg_fn, $agg_struct, $prepared_agg_struct, $segment_agg_struct);
+
+pub struct $segment_agg_struct {
+    ff_reader: MultiValueIntFastFieldReader<$type>,
+    vals: Vec<$type>,
+}
+
+impl $segment_agg_struct {
+    fn new(ff_reader: MultiValueIntFastFieldReader<$type>) -> Self {
+        Self {
+            ff_reader,
+            vals: vec!(),
+        }
+    }
+}
+
+impl SegmentAgg for $segment_agg_struct {
+    type Fruit = Percentiles<$type>;
+
+    fn collect(&mut self, doc: DocId, _: Score, fruit: &mut Self::Fruit) {
+        self.ff_reader.get_vals(doc, &mut self.vals);
+        for &v in self.vals.iter() {
+            fruit.quantiles.insert(v);
+        }
+    }
+}
+
+    )* };
+}
+
+impl_percentiles_agg_for_type!(
+    SINGLE
+    |f64, f64 : percentiles_agg_f64, PercentilesAggF64, PercentilesPreparedAggF64, PercentilesSegmentAggF64|
+);
+
+impl_percentiles_agg_for_type!(
+    MULTI
+    |f64, f64s : percentiles_agg_f64s, PercentilesAggF64s, PercentilesPreparedAggF64s, PercentilesSegmentAggF64s|
+);
 
 pub trait PercentileValue<T>:
     Into<f64> +
