@@ -1,3 +1,5 @@
+use std::cmp::Ordering;
+
 use tantivy::{Result, DocId, Score, Searcher, SkipResult};
 use tantivy::query::{Query, Scorer, Weight};
 
@@ -56,6 +58,10 @@ where
     type Fruit = SubAgg::Fruit;
     type Child = FilterSegmentAgg<SubAgg::Child>;
 
+    fn create_fruit(&self) -> Self::Fruit {
+        self.sub_agg.create_fruit()
+    }
+
     fn for_segment(&self, ctx: &AggSegmentContext) -> Result<Self::Child> {
         let mut scorer = self.weight.scorer(ctx.reader)?;
         let exhausted = !scorer.advance();
@@ -87,21 +93,30 @@ where
 {
     type Fruit = SubAgg::Fruit;
 
-    fn collect(&mut self, doc: DocId, score: Score, agg_value: &mut Self::Fruit) {
+    fn create_fruit(&self) -> Self::Fruit {
+        self.sub_agg.create_fruit()
+    }
+
+    fn collect(&mut self, doc: DocId, score: Score, fruit: &mut Self::Fruit) {
         if self.exhausted {
             return;
         }
-        if doc == self.scorer.doc() {
-            self.sub_agg.collect(doc, score, agg_value);
-            return;
-        }
-        match self.scorer.skip_next(doc) {
-            SkipResult::Reached => {
-                self.sub_agg.collect(doc, score, agg_value);
+
+        match self.scorer.doc().cmp(&doc) {
+            Ordering::Equal => {
+                self.sub_agg.collect(doc, score, fruit);
             }
-            SkipResult::OverStep => {}
-            SkipResult::End => {
-                self.exhausted = true;
+            Ordering::Greater => {}
+            Ordering::Less => {
+                match self.scorer.skip_next(doc) {
+                    SkipResult::Reached => {
+                        self.sub_agg.collect(doc, score, fruit);
+                    }
+                    SkipResult::OverStep => {}
+                    SkipResult::End => {
+                        self.exhausted = true;
+                    }
+                }
             }
         }
     }

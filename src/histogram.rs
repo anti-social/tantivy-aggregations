@@ -99,7 +99,6 @@ where
     ff_reader: FastFieldReader<f64>,
     interval: f64,
     sub_agg: SubAgg,
-//    fruit_factory: Fn() ->
 }
 
 impl<SubAgg> HistogramSegmentAgg<SubAgg>
@@ -177,13 +176,14 @@ where
 #[cfg(test)]
 mod tests {
     use tantivy::Result;
-    use tantivy::query::AllQuery;
+    use tantivy::query::{AllQuery, RangeQuery};
 
     use test_fixtures::ProductIndex;
 
-    use crate::searcher::AggSearcher;
+    use crate::AggSearcher;
     use crate::metric::count_agg;
     use crate::terms::terms_agg_u64s;
+    use crate::filter::filter_agg;
     use super::histogram_agg_f64;
 
     #[test]
@@ -290,6 +290,36 @@ mod tests {
                 (80.0_f64, None),
                 (90.0_f64, None),
                 (100.0_f64, Some(&1_u64)),
+            )
+        );
+
+        Ok(())
+    }
+
+
+    #[test]
+    fn test_filtered_histogram_agg() -> Result<()> {
+        let mut product_index = ProductIndex::create_in_ram(3)?;
+        product_index.index_test_products()?;
+        let searcher = product_index.reader.searcher();
+
+        let price_query = RangeQuery::new_f64(product_index.schema.price, 10_f64..100_f64);
+        let price_hist_agg = filter_agg(
+            &price_query,
+            histogram_agg_f64(
+                product_index.schema.price, 10.0_f64, count_agg()
+            )
+        );
+        let price_hist = searcher.agg_search(&AllQuery, &price_hist_agg)?;
+
+        assert_eq!(
+            price_hist.buckets(),
+            vec!(
+                (10.0_f64, Some(&1_u64)),
+                (20.0_f64, None),
+                (30.0_f64, None),
+                (40.0_f64, None),
+                (50.0_f64, Some(&1_u64)),
             )
         );
 
