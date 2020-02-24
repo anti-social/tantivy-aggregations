@@ -66,7 +66,7 @@ where
         })
     }
 
-    fn merge(&self, harvest: &mut Self::Fruit, fruit: &Self::Fruit) {
+    fn merge(&self, harvest: &mut Self::Fruit, fruit: Self::Fruit) {
         self.sub_agg.merge(harvest, fruit);
     }
 

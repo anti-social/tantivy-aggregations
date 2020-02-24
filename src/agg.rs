@@ -1,5 +1,3 @@
-use std::fmt::Debug;
-
 use tantivy::{Result, SegmentLocalId, SegmentReader, DocId, Score, Searcher};
 use tantivy::query::Scorer;
 
@@ -10,7 +8,7 @@ pub struct AggSegmentContext<'r, 's> {
 }
 
 pub trait Agg {
-    type Fruit: Default + Debug + Send;
+    type Fruit: Default + Send;
     type Child: PreparedAgg<Fruit= Self::Fruit>;
 
     fn prepare(&self, searcher: &Searcher) -> Result<Self::Child>;
@@ -19,7 +17,7 @@ pub trait Agg {
 }
 
 pub trait PreparedAgg: Sync {
-    type Fruit: Default + Debug + Send;
+    type Fruit: Default + Send;
     type Child: SegmentAgg<Fruit = Self::Fruit>;
 
     fn create_fruit(&self) -> Self::Fruit {
@@ -28,11 +26,11 @@ pub trait PreparedAgg: Sync {
 
     fn for_segment(&self, ctx: &AggSegmentContext) -> Result<Self::Child>;
 
-    fn merge(&self, acc: &mut Self::Fruit, fruit: &Self::Fruit);
+    fn merge(&self, acc: &mut Self::Fruit, fruit: Self::Fruit);
 }
 
 pub trait SegmentAgg {
-    type Fruit: Default + Debug;
+    type Fruit: Default;
 
     fn create_fruit(&self) -> Self::Fruit {
         Self::Fruit::default()

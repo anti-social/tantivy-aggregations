@@ -81,9 +81,9 @@ where
         ))
     }
 
-    fn merge(&self, harvest: &mut Self::Fruit, fruit: &Self::Fruit) {
-        for (key, bucket) in fruit.buckets.iter() {
-            let existing_bucket = harvest.buckets.entry(*key)
+    fn merge(&self, harvest: &mut Self::Fruit, fruit: Self::Fruit) {
+        for (key, bucket) in fruit.buckets {
+            let existing_bucket = harvest.buckets.entry(key)
                 .or_insert_with(|| self.sub_agg.create_fruit());
 
             self.sub_agg.merge(existing_bucket, bucket);
