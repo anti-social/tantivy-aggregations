@@ -234,9 +234,9 @@ mod tests {
         );
         let price_hist_for_tags = searcher.agg_search(&AllQuery, &price_hist_for_tags_agg)?;
         let top_tags = price_hist_for_tags.top_k(3, |b| b.0);
-        assert_eq!(top_tags.len(), 3);
+        let mut top_tags_iter = top_tags.iter();
 
-        let tag = top_tags[0];
+        let tag = top_tags_iter.next().unwrap();
         assert_eq!(
             tag.0, &211_u64
         );
@@ -252,46 +252,56 @@ mod tests {
             )
         );
 
-        let tag = top_tags[1];
-        assert_eq!(
-            tag.0, &111_u64
-        );
-        let tag_price_hist = tag.1;
-        assert_eq!(
-            tag_price_hist.0, 2_u64
-        );
-        assert_eq!(
-            tag_price_hist.1.buckets(),
-            vec!(
-                (0.0_f64, Some(&1_u64)),
-                (10.0_f64, Some(&1_u64)),
-            )
-        );
-
-        let tag = top_tags[2];
-        assert_eq!(
-            tag.0, &311_u64
-        );
-        let tag_price_hist = tag.1;
-        assert_eq!(
-            tag_price_hist.0, 2_u64
-        );
-        assert_eq!(
-            tag_price_hist.1.buckets(),
-            vec!(
-                (0.0_f64, Some(&1_u64)),
-                (10.0_f64, None),
-                (20.0_f64, None),
-                (30.0_f64, None),
-                (40.0_f64, None),
-                (50.0_f64, None),
-                (60.0_f64, None),
-                (70.0_f64, None),
-                (80.0_f64, None),
-                (90.0_f64, None),
-                (100.0_f64, Some(&1_u64)),
-            )
-        );
+        for tag in top_tags_iter {
+            let (tag_id, tag_price_hist) = tag;
+            assert_eq!(
+                tag_price_hist.0, 2_u64
+            );
+            match tag_id {
+                111_u64 => {
+                    assert_eq!(
+                        tag_price_hist.1.buckets(),
+                        vec!(
+                            (0.0_f64, Some(&1_u64)),
+                            (10.0_f64, Some(&1_u64)),
+                        )
+                    );
+                }
+                311_u64 => {
+                    assert_eq!(
+                        tag_price_hist.1.buckets(),
+                        vec!(
+                            (0.0_f64, Some(&1_u64)),
+                            (10.0_f64, None),
+                            (20.0_f64, None),
+                            (30.0_f64, None),
+                            (40.0_f64, None),
+                            (50.0_f64, None),
+                            (60.0_f64, None),
+                            (70.0_f64, None),
+                            (80.0_f64, None),
+                            (90.0_f64, None),
+                            (100.0_f64, Some(&1_u64)),
+                        )
+                    );
+                }
+                320_u64 => {
+                    assert_eq!(
+                        tag_price_hist.1.buckets(),
+                        vec!(
+                            (10.0_f64, Some(&1_u64)),
+                            (20.0_f64, None),
+                            (30.0_f64, None),
+                            (40.0_f64, None),
+                            (50.0_f64, Some(&1_u64)),
+                        )
+                    );
+                }
+                _ => {
+                    panic!("Unexpected tag: {}", tag_id);
+                }
+            }
+        }
 
         Ok(())
     }
