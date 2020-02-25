@@ -34,12 +34,11 @@ TODO:
 - [ ] avg, sum
 - [ ] stat
 - [ ] cardinality
-- [ ] **percentiles**
-- [x] terms (u64, i64, u64s, i64s)
+- [x] percentiles_agg (f64, f64s)
+- [x] terms, filtered_terms (u64, i64, u64s, i64s)
 - [x] filter
 - [ ] filters
 - [x] histogram (f64)
 - [ ] date_histogram
 - [ ] top_hits
-- [ ] dynamic aggregations (boxed)
-- [ ] derive macros
+- [ ] dynamic aggregations (boxed) - need help
