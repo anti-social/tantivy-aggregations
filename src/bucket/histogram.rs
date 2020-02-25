@@ -180,10 +180,7 @@ mod tests {
 
     use test_fixtures::ProductIndex;
 
-    use crate::AggSearcher;
-    use crate::metric::count_agg;
-    use crate::terms::terms_agg_u64s;
-    use crate::filter::filter_agg;
+    use crate::{AggSearcher, count_agg, filter_agg, terms_agg_u64s};
     use super::histogram_agg_f64;
 
     #[test]

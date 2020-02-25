@@ -1,9 +1,11 @@
 pub mod agg;
+pub mod bucket;
 pub mod filter;
-pub mod histogram;
 pub mod metric;
 pub mod searcher;
-pub mod terms;
 pub mod tuple;
 
 pub use searcher::AggSearcher;
+pub use bucket::*;
+pub use filter::*;
+pub use metric::*;

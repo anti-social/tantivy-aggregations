@@ -436,8 +436,7 @@ mod tests {
 
     use test_fixtures::ProductIndex;
 
-    use crate::metric::{count_agg, min_agg_f64};
-    use crate::searcher::AggSearcher;
+    use crate::{AggSearcher, count_agg, min_agg_f64};
     use super::{filtered_terms_agg_u64, terms_agg_u64};
 
     #[test]

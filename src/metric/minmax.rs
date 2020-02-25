@@ -177,9 +177,9 @@ mod tests {
 
     use test_fixtures::ProductIndex;
 
+    use crate::AggSearcher;
     use super::{min_agg_u64, min_agg_u64s, min_agg_f64, min_agg_date};
     use super::{max_agg_u64, max_agg_u64s, max_agg_f64, max_agg_date};
-    use crate::AggSearcher;
 
     #[test]
     fn test_min() -> Result<()> {

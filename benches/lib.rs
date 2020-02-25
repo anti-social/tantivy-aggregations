@@ -9,10 +9,9 @@ use tantivy::{Document, IndexWriter, Result, Term};
 use tantivy::query::AllQuery;
 
 extern crate tantivy_aggregations;
-use tantivy_aggregations::histogram::histogram_agg_f64;
-use tantivy_aggregations::metric::count_agg;
-use tantivy_aggregations::searcher::AggSearcher;
-use tantivy_aggregations::terms::{terms_agg_u64, terms_agg_u64s};
+use tantivy_aggregations::{
+    AggSearcher, count_agg, histogram_agg_f64, terms_agg_u64, terms_agg_u64s,
+};
 
 extern crate test;
 use test::{Bencher, black_box};

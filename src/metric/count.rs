@@ -54,8 +54,8 @@ mod tests {
 
     use test_fixtures::ProductIndex;
 
-    use super::count_agg;
     use crate::AggSearcher;
+    use super::count_agg;
 
     #[test]
     fn test_count() -> Result<()> {

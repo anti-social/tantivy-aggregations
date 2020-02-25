@@ -87,8 +87,7 @@ mod tests {
 
     use test_fixtures::ProductIndex;
 
-    use crate::AggSearcher;
-    use crate::metric::{count_agg, min_agg_f64, max_agg_f64};
+    use crate::{AggSearcher, count_agg, max_agg_f64, min_agg_f64};
 
     #[test]
     fn test_tuple() -> Result<()> {

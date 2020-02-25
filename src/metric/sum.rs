@@ -152,8 +152,8 @@ mod tests {
 
     use test_fixtures::ProductIndex;
 
-    use super::{sum_agg_u64, sum_agg_u64s, sum_agg_f64};
     use crate::AggSearcher;
+    use super::{sum_agg_f64, sum_agg_u64, sum_agg_u64s};
 
     #[test]
     fn test_sum() -> Result<()> {

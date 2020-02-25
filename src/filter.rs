@@ -130,8 +130,7 @@ mod tests {
 
     use test_fixtures::ProductIndex;
 
-    use crate::AggSearcher;
-    use crate::metric::count_agg;
+    use crate::{AggSearcher, count_agg};
     use super::filter_agg;
 
     #[test]
