@@ -1,6 +1,7 @@
 pub mod count;
 pub mod minmax;
 pub mod percentile;
+pub mod sum;
 
 pub use count::count_agg;
 pub use minmax::{
@@ -17,4 +18,9 @@ pub use minmax::{
 };
 pub use percentile::{
     percentiles_agg_f64, percentiles_agg_f64s,
+};
+pub use sum::{
+    sum_agg_f64, sum_agg_f64s,
+    sum_agg_i64, sum_agg_i64s,
+    sum_agg_u64, sum_agg_u64s,
 };

@@ -31,10 +31,10 @@ let top10_min_price = agg_result.1.top_k(10, |b| b.1);
 TODO:
 - [x] count
 - [x] min, max (u64, i64, f64, date, u64s, i64s, f64s, dates)
-- [ ] avg, sum
+- [x] sum (u64, i64, f64, u64s, i64s, f64s)
 - [ ] stat
 - [ ] cardinality
-- [x] percentiles_agg (f64, f64s)
+- [x] percentiles (f64, f64s)
 - [x] terms, filtered_terms (u64, i64, u64s, i64s)
 - [x] filter
 - [ ] filters
