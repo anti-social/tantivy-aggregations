@@ -8,7 +8,7 @@ pub struct AggSegmentContext<'r, 's> {
 }
 
 pub trait Agg {
-    type Fruit: Default + Send;
+    type Fruit: Send;
     type Child: PreparedAgg<Fruit= Self::Fruit>;
 
     fn prepare(&self, searcher: &Searcher) -> Result<Self::Child>;
@@ -17,12 +17,10 @@ pub trait Agg {
 }
 
 pub trait PreparedAgg: Sync {
-    type Fruit: Default + Send;
+    type Fruit: Send;
     type Child: SegmentAgg<Fruit = Self::Fruit>;
 
-    fn create_fruit(&self) -> Self::Fruit {
-        Self::Fruit::default()
-    }
+    fn create_fruit(&self) -> Self::Fruit;
 
     fn for_segment(&self, ctx: &AggSegmentContext) -> Result<Self::Child>;
 
@@ -30,11 +28,9 @@ pub trait PreparedAgg: Sync {
 }
 
 pub trait SegmentAgg {
-    type Fruit: Default;
+    type Fruit;
 
-    fn create_fruit(&self) -> Self::Fruit {
-        Self::Fruit::default()
-    }
+    fn create_fruit(&self) -> Self::Fruit;
 
     fn collect(&mut self, doc: DocId, score: Score, output: &mut Self::Fruit);
 }

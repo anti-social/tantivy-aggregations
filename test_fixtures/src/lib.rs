@@ -1,7 +1,8 @@
-use tantivy::{doc, Index, IndexReader, IndexWriter, Result};
+use tantivy::{doc, Index, IndexReader, IndexWriter, Result, Term};
 use tantivy::chrono::{DateTime, Utc};
 use tantivy::directory::RAMDirectory;
-use tantivy::schema::{Field, Schema, FAST, INDEXED, STORED, IntOptions, Cardinality};
+use tantivy::schema::{Field, Schema, FAST, INDEXED, STORED, IntOptions, Cardinality, IndexRecordOption};
+use tantivy::query::TermQuery;
 
 pub struct ProductIndex {
     pub schema: ProductSchema,
@@ -75,6 +76,13 @@ impl ProductIndex {
         let commit_res = self.writer.commit();
         self.reader.reload()?;
         commit_res
+    }
+
+    pub fn category_query(&self, category_id: u64) -> TermQuery {
+        TermQuery::new(
+            Term::from_field_u64(self.schema.category_id, category_id),
+            IndexRecordOption::Basic
+        )
     }
 }
 

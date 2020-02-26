@@ -42,6 +42,10 @@ impl PreparedAgg for $prepared_agg_struct {
     type Fruit = Option<$type>;
     type Child = $segment_agg_struct;
 
+    fn create_fruit(&self) -> Self::Fruit {
+        Default::default()
+    }
+
     fn for_segment(&self, ctx: &AggSegmentContext) -> Result<Self::Child> {
         let ff_reader = ctx.reader.fast_fields().$reader_fn(self.field)
             .ok_or_else(|| {
@@ -84,6 +88,10 @@ impl $segment_agg_struct {
 impl SegmentAgg for $segment_agg_struct {
     type Fruit = Option<$type>;
 
+    fn create_fruit(&self) -> Self::Fruit {
+        Default::default()
+    }
+
     fn collect(&mut self, doc: DocId, _: Score, fruit: &mut Self::Fruit) {
         let v = self.ff_reader.get(doc);
         if let Some(ref mut value) = fruit {
@@ -115,6 +123,10 @@ impl $segment_agg_struct {
 
 impl SegmentAgg for $segment_agg_struct {
     type Fruit = Option<$type>;
+
+    fn create_fruit(&self) -> Self::Fruit {
+        Default::default()
+    }
 
     fn collect(&mut self, doc: DocId, _: Score, fruit: &mut Self::Fruit) {
         self.ff_reader.get_vals(doc, &mut self.vals);

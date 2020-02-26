@@ -38,7 +38,7 @@ where
     SubAgg: Agg,
     <SubAgg as Agg>::Child: PreparedAgg,
 {
-    type Fruit = TermsAggResult<$type, SubAgg::Fruit>;
+    type Fruit = Terms<$type, SubAgg::Fruit>;
     type Child = $prepared_agg_struct<SubAgg::Child>;
 
     fn prepare(&self, searcher: &Searcher) -> Result<Self::Child> {
@@ -65,8 +65,12 @@ impl<SubAgg> PreparedAgg for $prepared_agg_struct<SubAgg>
 where
     SubAgg: PreparedAgg,
 {
-    type Fruit = TermsAggResult<$type, SubAgg::Fruit>;
+    type Fruit = Terms<$type, SubAgg::Fruit>;
     type Child = $segment_agg_struct<SubAgg::Child>;
+
+    fn create_fruit(&self) -> Self::Fruit {
+        Terms::new()
+    }
 
     fn for_segment(&self, ctx: &AggSegmentContext) -> Result<Self::Child> {
         let ff_reader = ctx.reader.fast_fields().$reader_fn(self.field)
@@ -114,7 +118,11 @@ impl<SubAgg> SegmentAgg for $segment_agg_struct<SubAgg>
 where
     SubAgg: SegmentAgg,
 {
-    type Fruit = TermsAggResult<$type, SubAgg::Fruit>;
+    type Fruit = Terms<$type, SubAgg::Fruit>;
+
+    fn create_fruit(&self) -> Self::Fruit {
+        Terms::new()
+    }
 
     fn collect(&mut self, doc: DocId, score: Score, agg_value: &mut Self::Fruit) {
         let key = self.ff_reader.get(doc);
@@ -155,7 +163,11 @@ impl<SubAgg> SegmentAgg for $segment_agg_struct<SubAgg>
 where
     SubAgg: SegmentAgg,
 {
-    type Fruit = TermsAggResult<$type, SubAgg::Fruit>;
+    type Fruit = Terms<$type, SubAgg::Fruit>;
+
+    fn create_fruit(&self) -> Self::Fruit {
+        Terms::new()
+    }
 
     fn collect(&mut self, doc: DocId, score: Score, agg_value: &mut Self::Fruit) {
         self.ff_reader.get_vals(doc, &mut self.vals);
@@ -213,7 +225,7 @@ where
     SubAgg: Agg,
     <SubAgg as Agg>::Child: PreparedAgg,
 {
-    type Fruit = TermsAggResult<$type, SubAgg::Fruit>;
+    type Fruit = Terms<$type, SubAgg::Fruit>;
     type Child = $prepared_agg_struct<F, SubAgg::Child>;
 
     fn prepare(&self, searcher: &Searcher) -> Result<Self::Child> {
@@ -244,8 +256,12 @@ where
     F: Fn($type) -> bool + Sync + Copy,
     SubAgg: PreparedAgg,
 {
-    type Fruit = TermsAggResult<$type, SubAgg::Fruit>;
+    type Fruit = Terms<$type, SubAgg::Fruit>;
     type Child = $segment_agg_struct<F, SubAgg::Child>;
+
+    fn create_fruit(&self) -> Self::Fruit {
+        Terms::new()
+    }
 
     fn for_segment(&self, ctx: &AggSegmentContext) -> Result<Self::Child> {
         let ff_reader = ctx.reader.fast_fields().$reader_fn(self.field)
@@ -297,7 +313,11 @@ where
     F: Fn($type) -> bool,
     SubAgg: SegmentAgg,
 {
-    type Fruit = TermsAggResult<$type, SubAgg::Fruit>;
+    type Fruit = Terms<$type, SubAgg::Fruit>;
+
+    fn create_fruit(&self) -> Self::Fruit {
+        Terms::new()
+    }
 
     fn collect(&mut self, doc: DocId, score: Score, agg_value: &mut Self::Fruit) {
         let key = self.ff_reader.get(doc);
@@ -346,7 +366,11 @@ where
     F: Fn($type) -> bool,
     SubAgg: SegmentAgg,
 {
-    type Fruit = TermsAggResult<$type, SubAgg::Fruit>;
+    type Fruit = Terms<$type, SubAgg::Fruit>;
+
+    fn create_fruit(&self) -> Self::Fruit {
+        Terms::new()
+    }
 
     fn collect(&mut self, doc: DocId, score: Score, agg_value: &mut Self::Fruit) {
         self.ff_reader.get_vals(doc, &mut self.vals);
@@ -377,17 +401,23 @@ impl_filtered_terms_agg_for_type!(
 );
 
 #[derive(Default, Debug)]
-pub struct TermsAggResult<K, T>
+pub struct Terms<K, T>
 where
     K: Eq + Hash,
 {
     res: HashMap<K, T>,
 }
 
-impl<T, K> TermsAggResult<K, T>
+impl<T, K> Terms<K, T>
 where
     K: Eq + Hash + Ord,
 {
+    fn new() -> Self {
+        Self {
+            res: HashMap::new()
+        }
+    }
+
     pub fn get(&self, key: &K) -> Option<&T> {
         self.res.get(key)
     }

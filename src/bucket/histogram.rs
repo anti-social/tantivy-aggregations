@@ -140,18 +140,12 @@ where
 }
 
 #[derive(Default, Debug)]
-pub struct HistogramAggRes<T>
-where
-    T: Default,
-{
+pub struct HistogramAggRes<T> {
     interval: f64,
     buckets: BTreeMap<u64, T>,
 }
 
-impl<T> HistogramAggRes<T>
-where
-    T: Default,
-{
+impl<T> HistogramAggRes<T> {
     pub fn buckets(&self) -> Vec<(f64, Option<&T>)> {
         let mut res = vec!();
         let mut last_bucket_ord = if let Some(&bucket_ord) = self.buckets.keys().next() {

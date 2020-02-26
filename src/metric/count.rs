@@ -28,6 +28,10 @@ impl PreparedAgg for PreparedCountAgg {
     type Fruit = u64;
     type Child = CountSegmentAgg;
 
+    fn create_fruit(&self) -> Self::Fruit {
+        Default::default()
+    }
+
     fn for_segment(&self, _: &AggSegmentContext) -> Result<Self::Child> {
         Ok(Self::Child {})
     }
@@ -41,6 +45,10 @@ pub struct CountSegmentAgg;
 
 impl SegmentAgg for CountSegmentAgg {
     type Fruit = u64;
+
+    fn create_fruit(&self) -> Self::Fruit {
+        Default::default()
+    }
 
     fn collect(&mut self, _: DocId, _: Score, agg_value: &mut Self::Fruit) {
         *agg_value += 1;
