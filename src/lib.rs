@@ -8,6 +8,6 @@ pub mod tuple;
 
 pub use searcher::AggSearcher;
 pub use bucket::*;
-// pub use either::either_agg;
+pub use either::{Either, either_agg, one_of_agg};
 pub use filter::filter_agg;
 pub use metric::*;

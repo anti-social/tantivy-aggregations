@@ -170,17 +170,125 @@ where
     }
 }
 
+pub fn one_of_agg<L, R>(either: Either<L, R>) -> OneOfAgg<L, R>
+where
+    L: Agg,
+    R: Agg,
+{
+    OneOfAgg {
+        which: either
+    }
+}
+
+pub struct OneOfAgg<L, R>
+where
+    L: Agg,
+    R: Agg,
+{
+    which: Either<L, R>
+}
+
+impl<L, R> Agg for OneOfAgg<L, R>
+where
+    L: Agg,
+    R: Agg<Fruit = L::Fruit>,
+{
+    type Fruit = L::Fruit;
+    type Child = OneOfPreparedAgg<L::Child, R::Child>;
+
+    fn prepare(&self, searcher: &Searcher) -> Result<Self::Child> {
+        Ok(OneOfPreparedAgg {
+            which: match &self.which {
+                Left(a) => Left(a.prepare(searcher)?),
+                Right(a) => Right(a.prepare(searcher)?),
+            }
+        })
+    }
+
+    fn requires_scoring(&self) -> bool {
+        self.which.as_ref()
+            .unwrap(|a| a.requires_scoring(), |a| a.requires_scoring())
+    }
+}
+
+pub struct OneOfPreparedAgg<L, R>
+where
+    L: PreparedAgg,
+    R: PreparedAgg,
+{
+    which: Either<L, R>
+}
+
+impl<L, R> PreparedAgg for OneOfPreparedAgg<L, R>
+where
+    L: PreparedAgg,
+    R: PreparedAgg<Fruit = L::Fruit>,
+{
+    type Fruit = L::Fruit;
+    type Child = OneOfSegmentAgg<L::Child, R::Child>;
+
+    fn create_fruit(&self) -> Self::Fruit {
+        self.which.as_ref()
+            .unwrap(|a| a.create_fruit(), |a| a.create_fruit())
+    }
+
+    fn for_segment(&self, ctx: &AggSegmentContext) -> Result<Self::Child> {
+        Ok(OneOfSegmentAgg {
+            which: match &self.which {
+                Left(a) => Left(a.for_segment(ctx)?),
+                Right(a) => Right(a.for_segment(ctx)?),
+            }
+        })
+    }
+
+    fn merge(&self, acc: &mut Self::Fruit, fruit: Self::Fruit) {
+        match &self.which {
+            Left(a) => a.merge(acc, fruit),
+            Right(a) => a.merge(acc, fruit),
+        }
+    }
+}
+
+pub struct OneOfSegmentAgg<L, R>
+where
+    L: SegmentAgg,
+    R: SegmentAgg,
+{
+    which: Either<L, R>
+}
+
+impl<L, R> SegmentAgg for OneOfSegmentAgg<L, R>
+where
+    L: SegmentAgg,
+    R: SegmentAgg<Fruit = L::Fruit>,
+{
+    type Fruit = L::Fruit;
+
+    fn create_fruit(&self) -> Self::Fruit {
+        self.which.as_ref()
+            .unwrap(|a| a.create_fruit(), |a| a.create_fruit())
+    }
+
+    fn collect(&mut self, doc: DocId, score: Score, fruit: &mut Self::Fruit) {
+        match &mut self.which {
+            Left(a) => a.collect(doc, score, fruit),
+            Right(a) => a.collect(doc, score, fruit),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use tantivy::{Result};
-    use tantivy::query::AllQuery;
+    use tantivy::query::{AllQuery, Query};
     use tantivy::schema::Field;
 
     use test_fixtures::ProductIndex;
 
-    use crate::{AggSearcher, count_agg, max_agg_f64, min_agg_f64};
+    use crate::{AggSearcher, count_agg, filter_agg, max_agg_f64, min_agg_f64};
     use crate::agg::Agg;
-    use super::{Either, EitherAgg, either_agg};
+    use super::{Either, EitherAgg, either_agg, one_of_agg};
+    use crate::either::OneOfAgg;
 
     #[test]
     fn test_either_agg() -> Result<()> {
@@ -207,6 +315,34 @@ mod tests {
         either_agg(match min_max_field {
             Some(f) => Either::Right((min_agg_f64(f), max_agg_f64(f))),
             None => Either::Left(count_agg())
+        })
+    }
+
+    #[test]
+    fn test_one_of_agg() -> Result<()> {
+        let mut product_index = ProductIndex::create_in_ram(3)?;
+        product_index.index_test_products()?;
+        let searcher = product_index.reader.searcher();
+
+        let category_filter = product_index.category_query(1_u64);
+        assert_eq!(
+            searcher.agg_search(&AllQuery, &count_with_filter(None))?,
+            5_u64
+        );
+        assert_eq!(
+            searcher.agg_search(&AllQuery, &count_with_filter(Some(&category_filter)))?,
+            2_u64
+        );
+
+        Ok(())
+    }
+
+    fn count_with_filter<'q>(
+        filter: Option<&'q dyn Query>
+    ) -> OneOfAgg<impl Agg<Fruit = u64> + 'q, impl Agg<Fruit = u64>> {
+        one_of_agg(match filter {
+            Some(f) => Either::Left(filter_agg(f, count_agg())),
+            None => Either::Right(count_agg()),
         })
     }
 }
