@@ -38,6 +38,7 @@ TODO:
 - [x] terms, filtered_terms (u64, i64, u64s, i64s)
 - [x] filter
 - [ ] filters
+- [x] post_filter (u64, u64s, i64, i64s, f64, f64s, custom)
 - [x] histogram (f64)
 - [ ] date_histogram
 - [ ] top_hits
